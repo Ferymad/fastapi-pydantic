@@ -1,98 +1,68 @@
 """
-Pydantic models for data validation in the AI Output Validation Service.
+Data models for the AI Output Validation Service.
 
-This module defines the models used for validating different types of AI outputs
-as well as standard response models.
+This module defines the Pydantic models used for request validation,
+response formatting, and internal data structures.
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import Dict, List, Any, Optional, Literal, Annotated
+from typing import Dict, List, Any, Optional
 from enum import Enum
+from pydantic import BaseModel, Field, field_validator
 
-# Common validation models
-class GenericAIOutput(BaseModel):
-    """Base model for generic AI outputs"""
-    response_text: str = Field(..., min_length=1)
-    confidence_score: Optional[float] = Field(None, ge=0.0, le=1.0)
-    
-    model_config = {
-        "str_strip_whitespace": True,
-        "extra": "forbid"
-    }
+class ValidationLevel(str, Enum):
+    """Level of semantic validation to apply."""
+    STRUCTURE_ONLY = "structure_only"  # Only perform structural validation
+    BASIC = "basic"                    # Basic semantic checks
+    STANDARD = "standard"              # Standard level of validation (default)
+    STRICT = "strict"                  # Thorough validation with high standards
 
-class RecommendationOutput(BaseModel):
-    """Model for recommendation type AI outputs"""
-    recommendations: List[Dict[str, Any]] = Field(..., min_length=1)
-    user_context: Optional[Dict[str, Any]] = None
-    
-    @field_validator('recommendations')
-    @classmethod
-    def validate_recommendations(cls, v):
-        if not v:
-            raise ValueError("Recommendations list cannot be empty")
-        for item in v:
-            if not isinstance(item, dict):
-                raise ValueError("Each recommendation must be a dictionary")
-            if "id" not in item:
-                raise ValueError("Each recommendation must have an id field")
-        return v
-    
-    model_config = {
-        "extra": "forbid"
-    }
+class StructuralValidationResult(BaseModel):
+    """Result of structural validation using Pydantic."""
+    is_structurally_valid: bool = Field(
+        ..., description="Whether the data passed structural validation"
+    )
+    errors: List[Dict[str, Any]] = Field(
+        default_factory=list, description="List of structural validation errors"
+    )
 
-class SummaryOutput(BaseModel):
-    """Model for summary type AI outputs"""
-    original_text: str = Field(..., min_length=10)
-    summary: str = Field(..., min_length=1)
-    key_points: Optional[List[str]] = None
-    
-    model_config = {
-        "str_strip_whitespace": True,
-        "extra": "forbid"
-    }
+class SemanticValidationResult(BaseModel):
+    """Result of semantic validation using PydanticAI."""
+    is_semantically_valid: bool = Field(
+        ..., description="Whether the data passed semantic validation"
+    )
+    semantic_score: float = Field(
+        ..., description="Confidence score for semantic validation (0.0-1.0)"
+    )
+    issues: List[str] = Field(
+        default_factory=list, description="List of semantic issues found"
+    )
+    suggestions: List[str] = Field(
+        default_factory=list, description="Suggestions for fixing issues"
+    )
 
-class ClassificationOutput(BaseModel):
-    """Model for classification type AI outputs"""
-    text: str = Field(..., min_length=1)
-    categories: List[str] = Field(..., min_length=1)
-    probabilities: Optional[Dict[str, float]] = None
-    
-    @field_validator('probabilities')
-    @classmethod
-    def validate_probabilities(cls, v, values):
-        if v is None:
-            return v
-        
-        categories = values.data.get('categories', [])
-        if not all(category in v for category in categories):
-            raise ValueError("All categories must have corresponding probabilities")
-        
-        for prob in v.values():
-            if not 0 <= prob <= 1:
-                raise ValueError("Probabilities must be between 0 and 1")
-        
-        return v
-    
-    model_config = {
-        "extra": "forbid"
-    }
+class ValidationRequest(BaseModel):
+    """Request body for validation endpoint."""
+    data: Dict[str, Any] = Field(
+        ..., description="Data to validate"
+    )
+    schema: Dict[str, Any] = Field(
+        ..., description="Schema to validate against"
+    )
+    type: str = Field(
+        "generic", description="Type of validation to perform (generic, recommendation, summary, etc.)"
+    )
+    level: ValidationLevel = Field(
+        ValidationLevel.STANDARD, description="Level of semantic validation strictness"
+    )
 
-# Response models
-class ErrorResponse(BaseModel):
-    """Standard error response model"""
-    status: Literal["invalid"] = "invalid"
-    errors: List[Dict[str, Any]]
-
-class SuccessResponse(BaseModel):
-    """Standard success response model"""
-    status: Literal["valid"] = "valid"
-    validated_data: Dict[str, Any]
-
-# Example validation models mapping
-example_validation_models = {
-    "generic": GenericAIOutput,
-    "recommendation": RecommendationOutput,
-    "summary": SummaryOutput,
-    "classification": ClassificationOutput,
-} 
+class ValidationResponse(BaseModel):
+    """Response body from validation endpoint."""
+    is_valid: bool = Field(
+        ..., description="Overall validation result (both structural and semantic if applicable)"
+    )
+    structural_validation: StructuralValidationResult = Field(
+        ..., description="Results of structural validation"
+    )
+    semantic_validation: Optional[SemanticValidationResult] = Field(
+        None, description="Results of semantic validation (if performed)"
+    ) 

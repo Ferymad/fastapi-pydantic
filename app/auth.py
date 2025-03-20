@@ -1,54 +1,50 @@
 """
-Authentication handlers for the API.
+Authentication utilities for the AI Output Validation Service.
 
-This module handles API key authentication for secure endpoints.
-Authentication can be enabled/disabled through the AUTH_ENABLED setting.
+This module provides utilities for API key validation and management.
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader
-from typing import Annotated
+from typing import Optional
+from fastapi import Header, HTTPException, Depends, status
+from app.config import Settings, get_settings
 
-from app.config import get_settings
-
-# Get settings
-settings = get_settings()
-api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-
-async def verify_api_key(
-    api_key: Annotated[str, Depends(api_key_header)]
-) -> str:
+async def get_optional_api_key(
+    x_api_key: Optional[str] = Header(None, description="Optional API key for authentication"),
+    settings: Settings = Depends(get_settings)
+) -> Optional[str]:
     """
-    Verify the API key provided in the request header.
+    Validate the API key if authentication is enabled.
     
-    If AUTH_ENABLED is False, this will always pass authentication.
+    If AUTH_ENABLED is False, this function will always pass and return None,
+    regardless of whether an API key is provided or not.
     
     Args:
-        api_key: The API key from the x-api-key header
+        x_api_key: The API key provided in the X-API-Key header
+        settings: Application settings
         
     Returns:
-        The API key if valid
+        The validated API key or None if authentication is disabled
         
     Raises:
-        HTTPException: If API key is missing or invalid when AUTH_ENABLED is True
+        HTTPException: If authentication is enabled and the API key is invalid
     """
-    # Skip authentication if disabled
+    # If authentication is disabled, skip validation
     if not settings.AUTH_ENABLED:
-        return api_key or "auth_disabled"
+        return None
     
-    # When auth is enabled, validate the API key
-    if not api_key:
+    # If authentication is enabled, require and validate API key
+    if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API Key",
+            detail="API key required",
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
-    if api_key != settings.SECRET_KEY:
+    if x_api_key != settings.API_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key",
+            detail="Invalid API key",
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
-    return api_key 
+    return x_api_key 

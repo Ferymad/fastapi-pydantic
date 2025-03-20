@@ -11,11 +11,18 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from enum import Enum
 import os
+import logging
 
 from app.config import get_settings
 
 # Get settings
 settings = get_settings()
+
+# Global agent instance
+_validation_agent = None
+
+# Logger
+logger = logging.getLogger(__name__)
 
 class ValidationLevel(str, Enum):
     """Validation levels for semantic checks"""
@@ -59,103 +66,140 @@ class EnhancedValidationResponse(BaseModel):
         description="Processing time in milliseconds"
     )
 
-# Initialize PydanticAI agent - will only work if OPENAI_API_KEY is provided
-validation_agent = None
-if settings.OPENAI_API_KEY:
-    # Set the environment variable for OpenAI API key
-    os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+def initialize_validation_agent():
+    """
+    Initialize the validation agent with PydanticAI.
     
-    validation_agent = Agent(
-        'openai:gpt-4o',  
-        system_prompt=(
-            'You are a validation assistant specialized in verifying AI outputs. '
-            'Your task is to analyze AI-generated content and determine if it meets both structural '
-            'and semantic requirements. You evaluate coherence, relevance, factual accuracy, '
-            'and alignment with the expected output type. '
-            'Provide detailed feedback on validation failures and specific suggestions for improvements.'
-        ),
-        instrument=True,  # Enable Logfire monitoring
-    )
+    This should be called at application startup.
+    """
+    global _validation_agent
+    
+    try:
+        if not settings.OPENAI_API_KEY:
+            logger.warning("OPENAI_API_KEY not set. Semantic validation will be disabled.")
+            return
+        
+        try:
+            # Import PydanticAI
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            try:
+                # First attempt: Try without api_key parameter (newer versions)
+                _validation_agent = Agent()
+                logger.info("PydanticAI Agent initialized successfully without api_key parameter")
+            except TypeError as e:
+                # Second attempt: Try with api_key parameter (older versions)
+                logger.info("Trying to initialize Agent with api_key parameter")
+                _validation_agent = Agent(api_key=settings.OPENAI_API_KEY)
+                logger.info("PydanticAI Agent initialized successfully with api_key parameter")
+            
+            logger.info("Validation agent initialized successfully")
+        except ImportError:
+            logger.error("pydantic_ai package not installed. Semantic validation will be disabled.")
+        except Exception as e:
+            logger.error(f"Failed to initialize validation agent: {e}")
+    except Exception as e:
+        logger.error(f"Error initializing validation agent: {e}")
+
+def get_validation_agent():
+    """
+    Get the singleton validation agent instance.
+    
+    Returns:
+        The initialized validation agent or None if not initialized
+    """
+    return _validation_agent
 
 async def perform_semantic_validation(
+    validation_type: str, 
+    validation_level: str,
     data: Dict[str, Any],
-    validation_type: str,
-    validation_level: ValidationLevel = ValidationLevel.STANDARD,
+    schema: Dict[str, Any],
     structural_errors: Optional[List[Dict[str, Any]]] = None
 ) -> SemanticValidationResult:
     """
-    Perform semantic validation on AI output data.
+    Perform semantic validation using PydanticAI.
     
     Args:
-        data: The AI output data to validate
-        validation_type: Type of validation (generic, recommendation, etc.)
-        validation_level: Level of semantic validation to perform
-        structural_errors: Any errors from standard structural validation
+        validation_type: Type of validation to perform
+        validation_level: Level of validation strictness
+        data: Data to validate
+        schema: Schema to validate against
+        structural_errors: List of structural validation errors if any
         
     Returns:
-        SemanticValidationResult with validation details
+        Semantic validation result
     """
-    # Check if validation agent is initialized
-    if validation_agent is None:
+    # Get the validation agent
+    validation_agent = get_validation_agent()
+    
+    if not validation_agent:
         return SemanticValidationResult(
             is_semantically_valid=False,
             semantic_score=0.0,
-            issues=["OpenAI API key not configured. Semantic validation is disabled."],
-            suggestions=["Configure OPENAI_API_KEY environment variable to enable semantic validation."]
+            issues=["Validation agent not initialized. Semantic validation is disabled."],
+            suggestions=["Check OpenAI API key configuration."]
         )
     
-    # Create context for the agent
-    context = {
-        "validation_type": validation_type,
-        "validation_level": validation_level,
-        "structural_errors": structural_errors or [],
-        "data": data,
-    }
+    # Construct prompt for validation
+    prompt = f"""
+    Validate the following data against the provided schema for {validation_type} validation at {validation_level} level.
     
-    # Create prompt based on validation type
-    validation_prompts = {
-        "generic": (
-            f"Validate this generic AI output with {validation_level} strictness:\n"
-            f"{data}\n\n"
-            f"Check if the response is coherent, well-structured, and appropriate."
-        ),
-        "recommendation": (
-            f"Validate this recommendation-type AI output with {validation_level} strictness:\n"
-            f"{data}\n\n"
-            f"Check if the recommendations are relevant, specific, and actionable."
-        ),
-        "summary": (
-            f"Validate this summary-type AI output with {validation_level} strictness:\n"
-            f"{data}\n\n"
-            f"Check if the summary accurately captures the key points of the original text."
-        ),
-        "classification": (
-            f"Validate this classification-type AI output with {validation_level} strictness:\n"
-            f"{data}\n\n"
-            f"Check if the classification is accurate, well-justified, and appropriate."
-        ),
-    }
+    SCHEMA:
+    {schema}
     
-    prompt = validation_prompts.get(
-        validation_type, 
-        f"Validate this {validation_type} AI output with {validation_level} strictness:\n{data}"
-    )
+    DATA:
+    {data}
     
-    if structural_errors:
-        prompt += (
-            f"\n\nNote that structural validation found these errors:\n"
-            f"{structural_errors}\n\n"
-            f"Consider these when providing semantic validation."
+    Validation Instructions:
+    1. Check if the data aligns with the schema's intent and purpose
+    2. Validate that field values make logical sense in context
+    3. Identify inconsistencies or contradictions in the data
+    4. Apply {validation_level} level of scrutiny
+    """
+    
+    # Run the agent with updated parameters (removed context)
+    try:
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # First attempt: Just the user_prompt and result_type
+            result = await validation_agent.run(
+                user_prompt=prompt,
+                result_type=SemanticValidationResult,
+            )
+            logger.info("Agent.run executed successfully with basic parameters")
+        except TypeError as e:
+            if "context" in str(e):
+                # Second attempt: Try with context parameter if that's the error
+                logger.info("Trying Agent.run with context parameter")
+                context = {
+                    "validation_type": validation_type,
+                    "validation_level": validation_level,
+                    "structural_errors": structural_errors or [],
+                    "data": data,
+                }
+                result = await validation_agent.run(
+                    user_prompt=prompt,
+                    context=context,
+                    result_type=SemanticValidationResult,
+                )
+                logger.info("Agent.run executed successfully with context parameter")
+            else:
+                # If it's some other TypeError, re-raise
+                raise
+        
+        return result
+    except Exception as e:
+        # Fallback in case of any errors with the agent
+        logger.error(f"Error during semantic validation: {e}")
+        return SemanticValidationResult(
+            is_semantically_valid=False,
+            semantic_score=0.0,
+            issues=[f"Error during semantic validation: {str(e)}"],
+            suggestions=["Try a different validation level or check the API configuration."]
         )
-    
-    # Run the agent
-    result = await validation_agent.run(
-        user_prompt=prompt,
-        context=context,
-        result_type=SemanticValidationResult,
-    )
-    
-    return result
 
 async def enhance_validation(
     data: Dict[str, Any],
@@ -199,9 +243,10 @@ async def enhance_validation(
     semantic_result = None
     if standard_validation_result.get("status") == "valid" or validation_level == ValidationLevel.STRICT:
         semantic_result = await perform_semantic_validation(
-            data=data,
             validation_type=validation_type,
             validation_level=validation_level,
+            data=data,
+            schema=standard_validation_result.get("schema", {}),
             structural_errors=structural_errors,
         )
     

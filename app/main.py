@@ -11,19 +11,30 @@ import time
 from typing import Dict, Any, List, Optional
 import logging
 
-from fastapi import FastAPI, Request, Response, status, Depends, HTTPException
+from fastapi import FastAPI, Request, Response, status, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError, Field, create_model
 
-from app.config import get_settings
-from app.monitoring import configure_monitoring, log_request, log_validation
-from app.ai_agent import (
-    enhance_validation, 
+from app.config import Settings, get_settings
+from app.models import (
+    ValidationRequest, 
+    ValidationResponse, 
     ValidationLevel,
-    SemanticValidationResult,
-    EnhancedValidationResponse
+    StructuralValidationResult, 
+    SemanticValidationResult
 )
+from app.auth import get_optional_api_key
+from app.monitoring import configure_monitoring, log_request, log_response
+from app.validation import (
+    create_model_from_schema,
+    perform_structural_validation,
+    perform_semantic_validation
+)
+from app.ai_agent import initialize_validation_agent
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Get settings
 settings = get_settings()
@@ -54,67 +65,63 @@ app = FastAPI(
 )
 
 # Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def get_cors_origins(settings: Settings) -> List[str]:
+    """Convert CORS_ORIGINS to proper format accepting both string and list."""
+    if isinstance(settings.CORS_ORIGINS, list):
+        return settings.CORS_ORIGINS
+    elif settings.CORS_ORIGINS == "*":
+        return ["*"]
+    elif isinstance(settings.CORS_ORIGINS, str):
+        return [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
+    return []
 
-# Log CORS configuration
-logger = logging.getLogger(__name__)
-logger.info(
-    "CORS configured", 
-    extra={
-        "allow_origins": settings.CORS_ORIGINS,
-        "allow_credentials": True,
-        "allow_methods": "*",
-        "allow_headers": "*"
-    }
-)
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application resources."""
+    settings = get_settings()
+    
+    # Configure CORS
+    origins = get_cors_origins(settings)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Configure Logfire
+    configure_monitoring(settings)
+    
+    # Initialize validation agent
+    initialize_validation_agent()
+    
+    logger.info(f"Application started with environment: {settings.ENVIRONMENT}")
+    logger.info(f"CORS configured with origins: {origins}")
 
 # Middleware for request logging and timing
 @app.middleware("http")
-async def log_requests_middleware(request: Request, call_next):
-    """Log request details and timing"""
-    start_time = time.time()
+async def monitoring_middleware(request: Request, call_next):
+    """
+    Middleware for request/response monitoring and logging.
     
-    # Add request ID for tracking
-    request_id = request.headers.get("X-Request-ID", None)
+    Args:
+        request: The incoming request
+        call_next: The next middleware or endpoint handler
+        
+    Returns:
+        The response from the endpoint
+    """
+    # Log the incoming request
+    await log_request(request)
     
-    # Process the request
-    try:
-        response = await call_next(request)
-        
-        # Log successful request
-        process_time = (time.time() - start_time) * 1000
-        log_request(
-            request=request,
-            response=response,
-            processing_time=process_time,
-            request_id=request_id,
-        )
-        
-        # Add processing time header
-        response.headers["X-Process-Time-Ms"] = f"{process_time:.2f}"
-        return response
-        
-    except Exception as e:
-        # Log failed request
-        process_time = (time.time() - start_time) * 1000
-        log_request(
-            request=request,
-            error=str(e),
-            processing_time=process_time,
-            request_id=request_id,
-        )
-        
-        # Return error response
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Internal server error", "error": str(e)}
-        )
+    # Process the request through the endpoint
+    response = await call_next(request)
+    
+    # Log the response
+    await log_response(request, response)
+    
+    return response
 
 # Health check endpoint
 @app.get("/health", include_in_schema=False)
@@ -143,20 +150,20 @@ async def root():
 
 class ValidationRequest(BaseModel):
     """Request body for validation endpoint"""
-    content: Dict[str, Any] = Field(..., description="Content to validate")
+    data: Dict[str, Any] = Field(..., description="Content to validate")
     schema: Dict[str, Any] = Field(..., description="Pydantic schema to validate against")
-    validation_type: str = Field(
+    type: str = Field(
         "generic", 
         description="Type of validation to perform (generic, recommendation, summary, etc.)"
     )
-    validation_level: ValidationLevel = Field(
+    level: ValidationLevel = Field(
         ValidationLevel.STANDARD, 
         description="Level of semantic validation strictness"
     )
 
 @app.post(
     "/validate", 
-    response_model=EnhancedValidationResponse, 
+    response_model=ValidationResponse, 
     tags=["validation"],
     status_code=status.HTTP_200_OK,
 )
@@ -174,67 +181,91 @@ async def validate_ai_output(request: ValidationRequest):
     - standard: Balanced semantic validation (default)
     - strict: Thorough semantic validation with high standards
     """
-    start_time = time.time()
-    
-    # Prepare results dictionaries
-    standard_results = {}
-    structured_errors = []
-    
-    # Perform standard Pydantic validation
-    try:
-        # Create dynamic model from schema
-        dynamic_model = create_model(
-            "DynamicModel",
-            **{field_name: (field_type.get("type", Any), ... if field_type.get("required", False) else None) 
-               for field_name, field_type in request.schema.items()}
-        )
-        
-        # Validate against dynamic model
-        validated_data = dynamic_model(**request.content)
-        standard_results = {
-            "status": "valid",
-            "errors": [],
-            "validated_data": validated_data.model_dump()
-        }
-        
-    except ValidationError as e:
-        # Handle validation errors
-        error_details = e.errors()
-        standard_results = {
-            "status": "invalid",
-            "errors": error_details,
-            "validated_data": None
-        }
-        structured_errors = error_details
-    
-    # Log validation results
-    log_validation(
-        content=request.content,
-        schema=request.schema,
-        validation_type=request.validation_type,
-        standard_results=standard_results,
+    validation_response = ValidationResponse(
+        is_valid=False,
+        structural_validation=StructuralValidationResult(
+            is_structurally_valid=False,
+            errors=[]
+        ),
+        semantic_validation=None
     )
     
-    # Enhance validation with semantic checks if API key is configured
-    if settings.OPENAI_API_KEY:
-        enhanced_results = await enhance_validation(
-            data=request.content,
-            validation_type=request.validation_type,
-            validation_level=request.validation_level,
-            standard_validation_result=standard_results,
-            structural_errors=structured_errors,
+    try:
+        logger.debug(f"Validation request received - type: {request.type}, level: {request.level}")
+        
+        # Create a dynamic Pydantic model from the schema
+        start_time = time.time()
+        try:
+            model_class = create_model_from_schema(request.schema)
+            logger.debug("Dynamic model created successfully")
+        except Exception as e:
+            logger.error(f"Schema parsing error: {e}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": f"Invalid schema: {str(e)}",
+                    "is_valid": False
+                }
+            )
+        
+        # Perform structural validation
+        structural_validation_result, data = await perform_structural_validation(
+            model_class=model_class,
+            data=request.data
         )
-    else:
-        processing_time = (time.time() - start_time) * 1000
-        enhanced_results = {
-            "standard_validation": standard_results,
-            "semantic_validation": {
-                "is_semantically_valid": False,
-                "semantic_score": 0.0,
-                "issues": ["OpenAI API key not configured. Semantic validation is disabled."],
-                "suggestions": ["Configure OPENAI_API_KEY environment variable to enable semantic validation."]
-            },
-            "processing_time_ms": processing_time,
-        }
+        validation_response.structural_validation = structural_validation_result
+        
+        if not structural_validation_result.is_structurally_valid:
+            logger.info(f"Structural validation failed with {len(structural_validation_result.errors)} errors")
+            validation_response.is_valid = False
+            return validation_response
+        
+        # If semantic validation is requested, perform it
+        if request.level != "structure_only":
+            logger.debug(f"Performing semantic validation at level: {request.level}")
+            try:
+                semantic_validation_result = await perform_semantic_validation(
+                    validation_type=request.type,
+                    validation_level=request.level,
+                    data=data,
+                    schema=request.schema,
+                    structural_errors=structural_validation_result.errors
+                )
+                validation_response.semantic_validation = semantic_validation_result
+                validation_response.is_valid = (
+                    structural_validation_result.is_structurally_valid and 
+                    semantic_validation_result.is_semantically_valid
+                )
+                
+                elapsed_time = time.time() - start_time
+                logger.info(
+                    f"Validation completed in {elapsed_time:.2f}s - "
+                    f"structural: {structural_validation_result.is_structurally_valid}, "
+                    f"semantic: {semantic_validation_result.is_semantically_valid}"
+                )
+            except Exception as e:
+                logger.error(f"Semantic validation error: {e}", exc_info=True)
+                validation_response.semantic_validation = SemanticValidationResult(
+                    is_semantically_valid=False,
+                    semantic_score=0.0,
+                    issues=[f"Error during semantic validation: {str(e)}"],
+                    suggestions=["Try a different validation level or check the system configuration."]
+                )
+                validation_response.is_valid = False
+        else:
+            # For structure_only validation, only structural validation matters
+            validation_response.is_valid = structural_validation_result.is_structurally_valid
+            elapsed_time = time.time() - start_time
+            logger.info(f"Structural validation completed in {elapsed_time:.2f}s - result: {validation_response.is_valid}")
     
-    return enhanced_results 
+    except Exception as e:
+        logger.error(f"Unexpected error during validation: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Validation service error: {str(e)}",
+                "is_valid": False
+            }
+        )
+    
+    return validation_response 

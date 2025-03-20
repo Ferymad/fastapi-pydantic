@@ -169,4 +169,59 @@ def get_validation_metrics() -> Dict[str, Any]:
         "semantic_validation_success_rate": 0.0,
         "average_processing_time_ms": 0.0,
         "validation_types": {},
-    } 
+    }
+
+async def log_request(request: Request) -> None:
+    """
+    Log request information.
+    
+    Args:
+        request: FastAPI request object
+    """
+    # Store request start time
+    request.state.start_time = time.time()
+    
+    # Extract basic request information
+    client_host = request.client.host if request.client else "unknown"
+    method = request.method
+    url = str(request.url)
+    
+    # Log the request
+    logger.info(
+        f"Request received: {method} {url}",
+        extra={
+            "client_ip": client_host,
+            "request_method": method,
+            "request_url": url,
+            "request_path": request.url.path,
+            "request_query": str(request.url.query),
+            "request_headers": dict(request.headers),
+        },
+    )
+
+async def log_response(request: Request, response: Response) -> None:
+    """
+    Log response information including processing time.
+    
+    Args:
+        request: FastAPI request object
+        response: FastAPI response object
+    """
+    # Calculate processing time
+    processing_time = time.time() - getattr(request.state, "start_time", time.time())
+    processing_time_ms = round(processing_time * 1000, 2)
+    
+    # Extract basic response information
+    status_code = response.status_code
+    content_length = response.headers.get("content-length", 0)
+    
+    # Log the response
+    logger.info(
+        f"Response sent: {status_code} in {processing_time_ms}ms",
+        extra={
+            "response_status": status_code,
+            "response_time_ms": processing_time_ms,
+            "response_content_length": content_length,
+            "response_headers": dict(response.headers),
+        },
+    ) 

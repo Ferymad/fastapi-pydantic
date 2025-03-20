@@ -6,7 +6,7 @@ using Pydantic's BaseSettings for environment variable validation and typing.
 """
 
 from functools import lru_cache
-from typing import List, Union, Any
+from typing import List, Union, Any, Optional
 from pydantic import BaseModel, Field, field_validator
 import os
 
@@ -55,18 +55,18 @@ class Settings(BaseModel):
     )
     
     # CORS settings
-    CORS_ORIGINS: List[str] = Field(
-        default_factory=lambda: ["*"],
+    CORS_ORIGINS: Union[List[str], str] = Field(
+        default="*",
         description="List of allowed origins for CORS"
     )
     
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
-    def validate_cors_origins(cls, v: Any) -> List[str]:
+    def validate_cors_origins(cls, v: Any) -> Union[List[str], str]:
         """Parse CORS_ORIGINS from string if necessary"""
         if isinstance(v, str):
             if v == "*":
-                return ["*"]
+                return "*"
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
             
