@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Output Validation Service</title>
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3a0ca3;
+            --accent-color: #4cc9f0;
+            --text-color: #333333;
+            --light-bg: #f8f9fa;
+            --dark-bg: #212529;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--light-bg);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background-color: var(--dark-bg);
+            color: white;
+            padding: 2rem 0;
+        }
+        
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem 0;
+        }
+        
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: white;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        main {
+            padding: 3rem 0;
+        }
+        
+        section {
+            margin-bottom: 3rem;
+        }
+        
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .feature-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--secondary-color);
+        }
+        
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .step {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-start;
+        }
+        
+        .step-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .step-content {
+            flex-grow: 1;
+        }
+        
+        .validation-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .validation-type {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .validation-type h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+            color: var(--secondary-color);
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background-color: #f4f4f4;
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            margin: 1rem 0;
+        }
+        
+        .cta {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        
+        .cta:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        footer {
+            background-color: var(--dark-bg);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        footer p {
+            margin-bottom: 1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .hero p {
+                font-size: 1rem;
+            }
+            
+            h2 {
+                font-size: 1.75rem;
+            }
+            
+            .features {
+                grid-template-columns: 1fr;
+            }
+            
+            .step {
+                flex-direction: column;
+            }
+            
+            .step-number {
+                margin-bottom: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="hero">
+                <h1>AI Output Validation Service</h1>
+                <p>A lightweight validation service for ensuring AI outputs conform to expected schemas</p>
+            </div>
+        </div>
+    </header>
+    
+    <main class="container">
+        <section>
+            <h2>What is the AI Output Validation Service?</h2>
+            <p>The AI Output Validation Service is a dedicated API built with FastAPI and Pydantic v2 that validates outputs from AI agents against predefined schemas. It ensures that AI-generated content meets your expected structure and requirements before it flows through your automation pipelines.</p>
+        </section>
+        
+        <section>
+            <h2>Key Features</h2>
+            <div class="features">
+                <div class="feature-card">
+                    <h3>Schema Validation</h3>
+                    <p>Validate AI outputs against predefined schemas using Pydantic v2's powerful validation capabilities.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Multiple Validation Types</h3>
+                    <p>Support for various output types including generic outputs, recommendations, summaries, and classifications.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Detailed Error Reporting</h3>
+                    <p>Get comprehensive error messages that pinpoint exactly what's wrong with your AI output.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>n8n Integration</h3>
+                    <p>Seamlessly integrate with n8n workflows to validate AI outputs before further processing.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>API Key Authentication</h3>
+                    <p>Secure your validation endpoints with API key authentication.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Fast Performance</h3>
+                    <p>Built with FastAPI and Pydantic v2 for high-performance validation.</p>
+                </div>
+            </div>
+        </section>
+        
+        <section>
+            <h2>How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Generate output with an AI agent</h3>
+                        <p>Create content with any AI system such as OpenAI's GPT, Anthropic's Claude, or your custom AI solution.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Send the output to our validation endpoint</h3>
+                        <p>Make a POST request to <code>/validate/{validation_type}</code> with your AI output in the request body.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Receive validation results</h3>
+                        <p>Get back a standardized response indicating whether the output is valid or invalid, with detailed error messages if validation fails.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Continue your workflow with confidence</h3>
+                        <p>Process the validated data in your automation pipelines knowing it conforms to your expected structure.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section>
+            <h2>Supported Validation Types</h2>
+            <div class="validation-types">
+                <div class="validation-type">
+                    <h3>Generic</h3>
+                    <p>Basic validation for any AI output with a response text and optional confidence score.</p>
+                </div>
+                <div class="validation-type">
+                    <h3>Recommendation</h3>
+                    <p>Validates recommendation-style outputs with a list of recommendations and optional user context.</p>
+                </div>
+                <div class="validation-type">
+                    <h3>Summary</h3>
+                    <p>Validates text summary outputs with original text, summary, and optional key points.</p>
+                </div>
+                <div class="validation-type">
+                    <h3>Classification</h3>
+                    <p>Validates classification outputs with text, categories, and optional probabilities.</p>
+                </div>
+            </div>
+        </section>
+        
+        <section>
+            <h2>API Integration Example</h2>
+            <p>Here's a simple example of how to use the validation service in your application:</p>
+            <pre>
+import requests
+
+# Your AI output data
+ai_output = {
+    "response_text": "This is a response from the AI",
+    "confidence_score": 0.92
+}
+
+# Send to validation service
+response = requests.post(
+    "https://dkogc88csc8kk4cg0o8s48ss.selmanayan.com/validate/generic",
+    headers={"x-api-key": "your_api_key"},
+    json=ai_output
+)
+
+# Check validation result
+if response.json()["status"] == "valid":
+    # Process the validated data
+    validated_data = response.json()["validated_data"]
+    print("Validation successful:", validated_data)
+else:
+    # Handle validation errors
+    errors = response.json()["errors"]
+    print("Validation failed:", errors)
+</pre>
+        </section>
+        
+        <section>
+            <h2>n8n Integration</h2>
+            <p>Easily integrate with n8n workflows to validate AI outputs before further processing:</p>
+            <ol>
+                <li>Set up an AI agent node in n8n (e.g., OpenAI)</li>
+                <li>Add an HTTP Request node:
+                    <ul>
+                        <li>Method: POST</li>
+                        <li>URL: <code>https://dkogc88csc8kk4cg0o8s48ss.selmanayan.com/validate/{validation_type}</code></li>
+                        <li>Headers: <code>x-api-key: your_api_key</code></li>
+                        <li>Body: Output from the AI agent node</li>
+                    </ul>
+                </li>
+                <li>Add a Switch node to handle the validation result:
+                    <ul>
+                        <li>Valid case: <code>{{$node["HTTP Request"].json["status"] === "valid"}}</code></li>
+                        <li>Invalid case: <code>{{$node["HTTP Request"].json["status"] === "invalid"}}</code></li>
+                    </ul>
+                </li>
+            </ol>
+        </section>
+        
+        <section style="text-align: center; margin-top: 4rem;">
+            <h2>Ready to Get Started?</h2>
+            <p style="margin-bottom: 2rem;">Check out our API documentation to start validating your AI outputs today.</p>
+            <a href="/docs" class="cta">View API Docs</a>
+        </section>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 AI Output Validation Service</p>
+        </div>
+    </footer>
+</body>
+</html> 

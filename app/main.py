@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Annotated
 from pydantic import ValidationError
@@ -28,6 +30,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect root to index.html"""
+    return RedirectResponse(url="/static/index.html")
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check() -> dict:
