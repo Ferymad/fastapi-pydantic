@@ -6,8 +6,8 @@ using Pydantic's BaseSettings for environment variable validation and typing.
 """
 
 from functools import lru_cache
-from typing import List
-from pydantic import BaseModel, Field
+from typing import List, Union, Any
+from pydantic import BaseModel, Field, field_validator
 import os
 
 class Settings(BaseModel):
@@ -56,22 +56,31 @@ class Settings(BaseModel):
     
     # CORS settings
     CORS_ORIGINS: List[str] = Field(
-        default=["*"],
+        default_factory=lambda: ["*"],
         description="List of allowed origins for CORS"
     )
     
-    class Config:
-        """Pydantic configuration"""
-        env_file = ".env"
-        case_sensitive = True
-        
-    def model_post_init(self, __context) -> None:
-        """Post-initialization to extract list values from env vars"""
-        # Parse CORS_ORIGINS from string if necessary
-        if isinstance(self.CORS_ORIGINS, str):
-            self.CORS_ORIGINS = [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def validate_cors_origins(cls, v: Any) -> List[str]:
+        """Parse CORS_ORIGINS from string if necessary"""
+        if isinstance(v, str):
+            if v == "*":
+                return ["*"]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
             
-        # Ensure development environment uses "*" for CORS
+    @field_validator('AUTH_ENABLED', mode='before')
+    @classmethod
+    def validate_auth_enabled(cls, v: Any) -> bool:
+        """Convert string values to boolean"""
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "t", "yes")
+        return bool(v)
+    
+    def model_post_init(self, __context) -> None:
+        """Post-initialization validation and adjustments"""
+        # Ensure development environment uses "*" for CORS if empty
         if self.ENV == "development" and not self.CORS_ORIGINS:
             self.CORS_ORIGINS = ["*"]
             
@@ -90,14 +99,15 @@ def get_settings() -> Settings:
     Returns the settings object, using lru_cache to avoid
     re-initializing settings on every call.
     """
+    # No need to manually process environment variables
+    # The field_validator will handle string-to-list conversion for CORS_ORIGINS
     return Settings(
-        # Explicitly load environment variables to handle any parsing or transformation
         SERVICE_NAME=os.getenv("SERVICE_NAME", "ai-output-validator"),
         SERVICE_VERSION=os.getenv("SERVICE_VERSION", "0.1.0"),
         ENV=os.getenv("ENV", "development"),
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
         SECRET_KEY=os.getenv("SECRET_KEY", "dev_secret_key_change_in_production"),
-        AUTH_ENABLED=os.getenv("AUTH_ENABLED", "False").lower() in ("true", "1", "t"),
+        AUTH_ENABLED=os.getenv("AUTH_ENABLED", "False"),
         LOGFIRE_API_KEY=os.getenv("LOGFIRE_API_KEY", ""),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
         CORS_ORIGINS=os.getenv("CORS_ORIGINS", "*"),

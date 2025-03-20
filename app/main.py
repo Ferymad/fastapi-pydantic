@@ -9,6 +9,7 @@ through PydanticAI integration.
 from contextlib import asynccontextmanager
 import time
 from typing import Dict, Any, List, Optional
+import logging
 
 from fastapi import FastAPI, Request, Response, status, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,6 +60,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Log CORS configuration
+logger = logging.getLogger(__name__)
+logger.info(
+    "CORS configured", 
+    extra={
+        "allow_origins": settings.CORS_ORIGINS,
+        "allow_credentials": True,
+        "allow_methods": "*",
+        "allow_headers": "*"
+    }
 )
 
 # Middleware for request logging and timing
