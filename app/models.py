@@ -1,14 +1,15 @@
+"""
+Pydantic models for data validation in the AI Output Validation Service.
+
+This module defines the models used for validating different types of AI outputs
+as well as standard response models.
+"""
+
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, List, Any, Optional, Literal, Annotated
 from enum import Enum
 
-class ValidationType(str, Enum):
-    """Supported validation types for AI outputs"""
-    GENERIC = "generic"
-    RECOMMENDATION = "recommendation"
-    SUMMARY = "summary"
-    CLASSIFICATION = "classification"
-
+# Common validation models
 class GenericAIOutput(BaseModel):
     """Base model for generic AI outputs"""
     response_text: str = Field(..., min_length=1)
@@ -77,6 +78,7 @@ class ClassificationOutput(BaseModel):
         "extra": "forbid"
     }
 
+# Response models
 class ErrorResponse(BaseModel):
     """Standard error response model"""
     status: Literal["invalid"] = "invalid"
@@ -87,10 +89,10 @@ class SuccessResponse(BaseModel):
     status: Literal["valid"] = "valid"
     validated_data: Dict[str, Any]
 
-# Map of validation types to their corresponding models
-validation_models = {
-    ValidationType.GENERIC: GenericAIOutput,
-    ValidationType.RECOMMENDATION: RecommendationOutput,
-    ValidationType.SUMMARY: SummaryOutput,
-    ValidationType.CLASSIFICATION: ClassificationOutput,
+# Example validation models mapping
+example_validation_models = {
+    "generic": GenericAIOutput,
+    "recommendation": RecommendationOutput,
+    "summary": SummaryOutput,
+    "classification": ClassificationOutput,
 } 
