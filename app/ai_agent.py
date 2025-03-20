@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from enum import Enum
+import os
 
 from app.config import get_settings
 
@@ -61,9 +62,11 @@ class EnhancedValidationResponse(BaseModel):
 # Initialize PydanticAI agent - will only work if OPENAI_API_KEY is provided
 validation_agent = None
 if settings.OPENAI_API_KEY:
+    # Set the environment variable for OpenAI API key
+    os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+    
     validation_agent = Agent(
         'openai:gpt-4o',  
-        api_key=settings.OPENAI_API_KEY,
         system_prompt=(
             'You are a validation assistant specialized in verifying AI outputs. '
             'Your task is to analyze AI-generated content and determine if it meets both structural '
