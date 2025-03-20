@@ -90,14 +90,31 @@ async def startup_event():
         allow_headers=["*"],
     )
     
-    # Configure Logfire
-    configure_monitoring(settings)
+    # Log startup information
+    logger.info(f"Application starting with environment: {settings.ENVIRONMENT}")
+    logger.info(f"CORS configured with origins: {origins}")
+    
+    # Configure monitoring
+    try:
+        configure_monitoring(settings)
+        logger.info("Monitoring configured successfully")
+    except Exception as e:
+        logger.error(f"Failed to configure monitoring: {str(e)}")
     
     # Initialize validation agent
-    initialize_validation_agent()
+    try:
+        logger.info("Initializing validation agent...")
+        initialize_validation_agent()
+        from app.ai_agent import get_validation_agent
+        agent = get_validation_agent()
+        if agent:
+            logger.info("Validation agent initialized successfully")
+        else:
+            logger.warning("Validation agent initialization completed but agent is not available")
+    except Exception as e:
+        logger.error(f"Failed to initialize validation agent: {str(e)}", exc_info=True)
     
-    logger.info(f"Application started with environment: {settings.ENVIRONMENT}")
-    logger.info(f"CORS configured with origins: {origins}")
+    logger.info(f"Application startup complete")
 
 # Middleware for request logging and timing
 @app.middleware("http")

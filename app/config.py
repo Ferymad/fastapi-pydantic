@@ -23,21 +23,21 @@ class Settings(BaseModel):
         default="0.1.0",
         description="Version of the service"
     )
-    ENV: str = Field(
+    ENVIRONMENT: str = Field(
         default="development",
         description="Environment (development, staging, production)"
     )
     
     # API Settings
-    OPENAI_API_KEY: str = Field(
-        default="",
+    OPENAI_API_KEY: Optional[str] = Field(
+        default=None,
         description="OpenAI API key for PydanticAI validation"
     )
     
     # Security settings
-    SECRET_KEY: str = Field(
-        default="dev_secret_key_change_in_production",
-        description="Secret key for signing tokens"
+    API_KEY: Optional[str] = Field(
+        default=None,
+        description="API key for authentication"
     )
     AUTH_ENABLED: bool = Field(
         default=False,
@@ -81,13 +81,13 @@ class Settings(BaseModel):
     def model_post_init(self, __context) -> None:
         """Post-initialization validation and adjustments"""
         # Ensure development environment uses "*" for CORS if empty
-        if self.ENV == "development" and not self.CORS_ORIGINS:
+        if self.ENVIRONMENT == "development" and not self.CORS_ORIGINS:
             self.CORS_ORIGINS = ["*"]
             
         # Production environment validation
-        if self.ENV == "production":
+        if self.ENVIRONMENT == "production":
             # Ensure we're not using default secret key in production
-            if self.SECRET_KEY == "dev_secret_key_change_in_production":
+            if self.API_KEY == "dev_secret_key_change_in_production":
                 import warnings
                 warnings.warn(
                     "WARNING: Using default secret key in production environment!"
@@ -99,14 +99,12 @@ def get_settings() -> Settings:
     Returns the settings object, using lru_cache to avoid
     re-initializing settings on every call.
     """
-    # No need to manually process environment variables
-    # The field_validator will handle string-to-list conversion for CORS_ORIGINS
     return Settings(
         SERVICE_NAME=os.getenv("SERVICE_NAME", "ai-output-validator"),
         SERVICE_VERSION=os.getenv("SERVICE_VERSION", "0.1.0"),
-        ENV=os.getenv("ENV", "development"),
-        OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
-        SECRET_KEY=os.getenv("SECRET_KEY", "dev_secret_key_change_in_production"),
+        ENVIRONMENT=os.getenv("ENVIRONMENT", "development"),
+        OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", None),
+        API_KEY=os.getenv("API_KEY", None),
         AUTH_ENABLED=os.getenv("AUTH_ENABLED", "False"),
         LOGFIRE_API_KEY=os.getenv("LOGFIRE_API_KEY", ""),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),

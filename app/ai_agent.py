@@ -75,32 +75,61 @@ def initialize_validation_agent():
     global _validation_agent
     
     try:
-        if not settings.OPENAI_API_KEY:
-            logger.warning("OPENAI_API_KEY not set. Semantic validation will be disabled.")
+        from app.config import get_settings
+        settings = get_settings()
+        
+        # Log the API key status (masked for security)
+        if settings.OPENAI_API_KEY:
+            api_key_status = f"provided (length: {len(settings.OPENAI_API_KEY)})"
+            logger.info(f"OpenAI API key is {api_key_status}")
+        else:
+            logger.warning("OPENAI_API_KEY not set or empty. Semantic validation will be disabled.")
             return
         
         try:
             # Import PydanticAI
-            import logging
-            logger = logging.getLogger(__name__)
+            from pydantic_ai import Agent
+            
+            # Set environment variable for OpenAI API key (some libraries require this)
+            import os
+            os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
             
             try:
                 # First attempt: Try without api_key parameter (newer versions)
-                _validation_agent = Agent()
+                logger.info("Initializing PydanticAI Agent without api_key parameter")
+                _validation_agent = Agent(
+                    model="openai:gpt-4o",
+                    system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
+                    instrument=True
+                )
                 logger.info("PydanticAI Agent initialized successfully without api_key parameter")
             except TypeError as e:
                 # Second attempt: Try with api_key parameter (older versions)
-                logger.info("Trying to initialize Agent with api_key parameter")
-                _validation_agent = Agent(api_key=settings.OPENAI_API_KEY)
+                logger.info(f"Agent initialization failed: {e}. Trying with api_key parameter")
+                _validation_agent = Agent(
+                    model="openai:gpt-4o",
+                    api_key=settings.OPENAI_API_KEY,
+                    system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
+                    instrument=True
+                )
                 logger.info("PydanticAI Agent initialized successfully with api_key parameter")
+            except Exception as e:
+                # Third attempt: Try with minimal parameters
+                logger.info(f"Agent initialization failed again: {e}. Trying with minimal parameters")
+                _validation_agent = Agent(api_key=settings.OPENAI_API_KEY)
+                logger.info("PydanticAI Agent initialized successfully with minimal parameters")
             
-            logger.info("Validation agent initialized successfully")
-        except ImportError:
-            logger.error("pydantic_ai package not installed. Semantic validation will be disabled.")
+            # Test if the agent was initialized correctly
+            if _validation_agent is None:
+                logger.error("Agent initialization appeared to succeed but returned None")
+            else:
+                logger.info("Validation agent initialized successfully")
+        except ImportError as e:
+            logger.error(f"pydantic_ai package not installed or has dependency issues: {e}")
         except Exception as e:
-            logger.error(f"Failed to initialize validation agent: {e}")
+            logger.error(f"Failed to initialize validation agent: {str(e)}", exc_info=True)
     except Exception as e:
-        logger.error(f"Error initializing validation agent: {e}")
+        logger.error(f"Error in agent initialization process: {str(e)}", exc_info=True)
 
 def get_validation_agent():
     """

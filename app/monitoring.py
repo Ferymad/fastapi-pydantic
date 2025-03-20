@@ -42,14 +42,14 @@ def configure_monitoring():
                 api_key=settings.LOGFIRE_API_KEY,
                 service_name=settings.SERVICE_NAME,
                 service_version=settings.SERVICE_VERSION,
-                environment=settings.ENV,
+                environment=settings.ENVIRONMENT,
             )
             logger.info(
                 "Logfire monitoring configured",
                 extra={
                     "service_name": settings.SERVICE_NAME,
                     "service_version": settings.SERVICE_VERSION,
-                    "environment": settings.ENV,
+                    "environment": settings.ENVIRONMENT,
                 },
             )
         except Exception as e:
