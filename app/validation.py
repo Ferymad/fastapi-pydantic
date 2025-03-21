@@ -105,6 +105,78 @@ async def perform_structural_validation(
         )
         return result, data
 
+async def basic_semantic_validation(
+    validation_type: str,
+    validation_level: str,
+    data: Dict[str, Any],
+    schema: Dict[str, Any],
+    structural_errors: Optional[List[Dict[str, Any]]] = None
+) -> SemanticValidationResult:
+    """
+    Perform basic semantic validation without using the AI agent.
+    This is a fallback when PydanticAI is unavailable.
+    
+    Args:
+        validation_type: Type of validation to perform
+        validation_level: Level of validation strictness
+        data: Data to validate
+        schema: Schema to validate against
+        structural_errors: Errors from structural validation, if any
+        
+    Returns:
+        A SemanticValidationResult object
+    """
+    logger.info(f"Performing basic semantic validation for type: {validation_type}")
+    
+    # If there are structural errors, return invalid semantic result
+    if structural_errors and len(structural_errors) > 0:
+        return SemanticValidationResult(
+            is_semantically_valid=False,
+            semantic_score=0.0,
+            issues=["Failed structural validation"],
+            suggestions=["Fix structural errors before semantic validation"]
+        )
+    
+    # Perform basic checks based on validation type
+    issues = []
+    suggestions = []
+    
+    # Check for empty strings in text fields
+    for field, value in data.items():
+        if isinstance(value, str) and not value.strip():
+            issues.append(f"Field '{field}' is empty")
+            suggestions.append(f"Provide meaningful content for '{field}'")
+    
+    # Check data completeness against schema
+    for field, field_def in schema.items():
+        if field_def.get("required", False) and field not in data:
+            issues.append(f"Required field '{field}' is missing")
+            suggestions.append(f"Add the required field '{field}'")
+    
+    # Basic checks based on validation type
+    if validation_type == "recommendation":
+        if "recommendation_text" in data and len(data.get("recommendation_text", "")) < 20:
+            issues.append("Recommendation text is too short")
+            suggestions.append("Provide more detailed recommendations (at least 20 characters)")
+            
+    elif validation_type == "summary":
+        if "summary" in data and len(data.get("summary", "")) < 30:
+            issues.append("Summary is too short")
+            suggestions.append("Provide a more comprehensive summary (at least 30 characters)")
+    
+    # Determine if semantically valid based on issues
+    is_valid = len(issues) == 0
+    
+    # Calculate a basic semantic score based on issues
+    score = 1.0 if is_valid else max(0.0, 1.0 - (len(issues) * 0.1))
+    
+    return SemanticValidationResult(
+        is_semantically_valid=is_valid,
+        semantic_score=score,
+        issues=issues,
+        suggestions=suggestions
+    )
+
 async def perform_semantic_validation(
     validation_type: str,
     validation_level: str,
@@ -113,50 +185,52 @@ async def perform_semantic_validation(
     structural_errors: Optional[List[Dict[str, Any]]] = None
 ) -> SemanticValidationResult:
     """
-    Perform semantic validation using the AI agent.
+    Perform semantic validation using PydanticAI.
     
     Args:
-        validation_type: The type of validation to perform
-        validation_level: The level of validation strictness
-        data: The data to validate
-        schema: The schema used for validation
-        structural_errors: List of structural validation errors (if any)
+        validation_type: Type of validation to perform
+        validation_level: Level of validation strictness
+        data: Data to validate
+        schema: Schema to validate against
+        structural_errors: Errors from structural validation, if any
         
     Returns:
-        A SemanticValidationResult with validation findings
+        A SemanticValidationResult object
     """
-    # Get validation agent (initialized on app startup)
-    validation_agent = get_validation_agent()
+    # Get the validation agent
+    agent = get_validation_agent()
     
-    if not validation_agent:
-        logger.warning("Semantic validation requested but validation agent not initialized")
-        return SemanticValidationResult(
-            is_semantically_valid=False,
-            semantic_score=0.0,
-            issues=["Validation agent not initialized. Semantic validation is disabled."],
-            suggestions=["Check OpenAI API key configuration."]
+    # If no agent available, use basic semantic validation
+    if not agent:
+        logger.warning("PydanticAI agent not available, using basic semantic validation")
+        return await basic_semantic_validation(
+            validation_type, 
+            validation_level, 
+            data, 
+            schema, 
+            structural_errors
         )
     
-    # Construct a prompt for the validation
-    prompt = f"""
-    Validate the following data against the provided schema for {validation_type} validation at {validation_level} level.
-    
-    SCHEMA:
-    {schema}
-    
-    DATA:
-    {data}
-    
-    Validation Instructions:
-    1. Check if the data aligns with the schema's intent and purpose
-    2. Validate that field values make logical sense in context
-    3. Identify inconsistencies or contradictions in the data
-    4. Apply {validation_level} level of scrutiny
-    """
-    
     try:
+        # Construct a prompt for the validation
+        prompt = f"""
+        Validate the following data against the provided schema for {validation_type} validation at {validation_level} level.
+        
+        SCHEMA:
+        {schema}
+        
+        DATA:
+        {data}
+        
+        Validation Instructions:
+        1. Check if the data aligns with the schema's intent and purpose
+        2. Validate that field values make logical sense in context
+        3. Identify inconsistencies or contradictions in the data
+        4. Apply {validation_level} level of scrutiny
+        """
+        
         # Use the AI agent for validation
-        result = await validation_agent.run(
+        result = await agent.run(
             user_prompt=prompt,
             result_type=SemanticValidationResult,
         )

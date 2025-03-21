@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import time
 from typing import Dict, Any, List, Optional
 import logging
+import os
 
 from fastapi import FastAPI, Request, Response, status, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -149,7 +150,65 @@ async def health_check():
     return {
         "status": "healthy",
         "service": settings.SERVICE_NAME,
-        "version": settings.SERVICE_VERSION
+        "version": settings.SERVICE_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": time.time()
+    }
+
+@app.get("/diagnostic", include_in_schema=False)
+async def diagnostic():
+    """
+    Diagnostic endpoint providing detailed information about the service status,
+    particularly the PydanticAI agent initialization.
+    
+    This endpoint is useful for troubleshooting when the agent fails to initialize.
+    """
+    from app.ai_agent import get_validation_agent
+    
+    # Get settings
+    settings = get_settings()
+    
+    # Check PydanticAI version
+    try:
+        import importlib.metadata
+        pydantic_ai_version = importlib.metadata.version("pydantic-ai")
+    except Exception as e:
+        pydantic_ai_version = f"Error getting version: {str(e)}"
+    
+    # Check if OpenAI API key is provided
+    openai_api_key_provided = bool(settings.OPENAI_API_KEY)
+    
+    # Check environment variable
+    openai_api_key_env_provided = bool(os.environ.get("OPENAI_API_KEY"))
+    
+    # Check if agent is initialized
+    agent = get_validation_agent()
+    agent_initialized = agent is not None
+    
+    # Verify OpenAI API key validity without exposing the key
+    key_valid = False
+    if openai_api_key_provided:
+        try:
+            from app.ai_agent import verify_openai_api_key
+            key_valid = verify_openai_api_key(settings.OPENAI_API_KEY)
+        except Exception as e:
+            logger.error(f"Error verifying OpenAI API key: {str(e)}")
+    
+    return {
+        "service_status": "healthy",
+        "service_name": settings.SERVICE_NAME,
+        "service_version": settings.SERVICE_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "pydantic_ai_version": pydantic_ai_version,
+        "agent_status": {
+            "api_key_provided": openai_api_key_provided,
+            "api_key_env_provided": openai_api_key_env_provided,
+            "api_key_valid": key_valid,
+            "agent_initialized": agent_initialized
+        },
+        "timestamps": {
+            "current": time.time()
+        }
     }
 
 # API Information endpoint

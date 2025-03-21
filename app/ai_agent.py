@@ -12,6 +12,8 @@ from typing import Dict, Any, List, Optional
 from enum import Enum
 import os
 import logging
+import importlib.metadata
+import requests
 
 from app.config import get_settings
 
@@ -86,50 +88,112 @@ def initialize_validation_agent():
             logger.warning("OPENAI_API_KEY not set or empty. Semantic validation will be disabled.")
             return
         
+        # Set environment variable for OpenAI API key (some libraries require this)
+        os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+        
+        # Verify OpenAI API key before attempting to initialize the agent
+        if not verify_openai_api_key(settings.OPENAI_API_KEY):
+            logger.error("OpenAI API key verification failed. Semantic validation will be disabled.")
+            return
+        
         try:
             # Import PydanticAI
             from pydantic_ai import Agent
             
-            # Set environment variable for OpenAI API key (some libraries require this)
-            import os
-            os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+            # Check PydanticAI version to determine initialization approach
+            pydantic_ai_version = importlib.metadata.version("pydantic-ai")
+            logger.info(f"Detected PydanticAI version: {pydantic_ai_version}")
             
-            try:
-                # First attempt: Try without api_key parameter (newer versions)
-                logger.info("Initializing PydanticAI Agent without api_key parameter")
+            # Version-specific initialization
+            if tuple(map(int, pydantic_ai_version.split("."))) >= (0, 0, 30):
+                # Newer versions (≥0.0.30)
+                logger.info("Using newer PydanticAI initialization pattern")
                 _validation_agent = Agent(
                     model="openai:gpt-4o",
                     system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
                     instrument=True
                 )
-                logger.info("PydanticAI Agent initialized successfully without api_key parameter")
-            except TypeError as e:
-                # Second attempt: Try with api_key parameter (older versions)
-                logger.info(f"Agent initialization failed: {e}. Trying with api_key parameter")
+            else:
+                # Older versions (<0.0.30)
+                logger.info("Using older PydanticAI initialization pattern")
                 _validation_agent = Agent(
                     model="openai:gpt-4o",
                     api_key=settings.OPENAI_API_KEY,
                     system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
                     instrument=True
                 )
-                logger.info("PydanticAI Agent initialized successfully with api_key parameter")
-            except Exception as e:
-                # Third attempt: Try with minimal parameters
-                logger.info(f"Agent initialization failed again: {e}. Trying with minimal parameters")
-                _validation_agent = Agent(api_key=settings.OPENAI_API_KEY)
-                logger.info("PydanticAI Agent initialized successfully with minimal parameters")
             
-            # Test if the agent was initialized correctly
-            if _validation_agent is None:
-                logger.error("Agent initialization appeared to succeed but returned None")
-            else:
-                logger.info("Validation agent initialized successfully")
+            logger.info("PydanticAI Agent initialized successfully")
+            
+            # Verify agent is working with simple prompt
+            verify_agent_functionality()
+            
         except ImportError as e:
             logger.error(f"pydantic_ai package not installed or has dependency issues: {e}")
         except Exception as e:
             logger.error(f"Failed to initialize validation agent: {str(e)}", exc_info=True)
     except Exception as e:
         logger.error(f"Error in agent initialization process: {str(e)}", exc_info=True)
+
+def verify_openai_api_key(api_key: str) -> bool:
+    """
+    Verify that the OpenAI API key is valid without initializing the full agent.
+    
+    Args:
+        api_key: The OpenAI API key to verify
+        
+    Returns:
+        bool: True if the API key is valid, False otherwise
+    """
+    if not api_key:
+        return False
+        
+    try:
+        # Simple call to OpenAI API to check if the key is valid
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Using models endpoint as a lightweight check
+        response = requests.get(
+            "https://api.openai.com/v1/models",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            logger.info("OpenAI API key verification successful")
+            return True
+        else:
+            logger.error(f"OpenAI API key verification failed: {response.status_code} {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error verifying OpenAI API key: {str(e)}")
+        return False
+
+def verify_agent_functionality():
+    """
+    Verify that the initialized agent is functioning correctly with a simple prompt.
+    """
+    global _validation_agent
+    
+    if not _validation_agent:
+        logger.warning("Cannot verify agent functionality: agent is not initialized")
+        return
+        
+    try:
+        # Simple prompt to test agent functionality
+        result = _validation_agent.run(
+            user_prompt="Respond with 'ok' if you can read this message.", 
+            result_type=str
+        )
+        
+        if result and "ok" in result.lower():
+            logger.info("Agent functionality verified successfully")
+        else:
+            logger.warning(f"Agent functionality verification returned unexpected result: {result}")
+    except Exception as e:
+        logger.error(f"Agent functionality verification failed: {str(e)}")
 
 def get_validation_agent():
     """
