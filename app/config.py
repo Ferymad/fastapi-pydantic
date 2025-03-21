@@ -44,6 +44,12 @@ class Settings(BaseModel):
         description="Whether authentication is enabled"
     )
     
+    # Validation settings
+    SEMANTIC_VALIDATION_ENABLED: bool = Field(
+        default=False,
+        description="Whether semantic validation is enabled"
+    )
+    
     # Monitoring settings
     LOGFIRE_API_KEY: str = Field(
         default="",
@@ -70,9 +76,9 @@ class Settings(BaseModel):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
             
-    @field_validator('AUTH_ENABLED', mode='before')
+    @field_validator('AUTH_ENABLED', 'SEMANTIC_VALIDATION_ENABLED', mode='before')
     @classmethod
-    def validate_auth_enabled(cls, v: Any) -> bool:
+    def validate_boolean_fields(cls, v: Any) -> bool:
         """Convert string values to boolean"""
         if isinstance(v, str):
             return v.lower() in ("true", "1", "t", "yes")
@@ -106,6 +112,7 @@ def get_settings() -> Settings:
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", None),
         API_KEY=os.getenv("API_KEY", None),
         AUTH_ENABLED=os.getenv("AUTH_ENABLED", "False"),
+        SEMANTIC_VALIDATION_ENABLED=os.getenv("SEMANTIC_VALIDATION_ENABLED", "False"),
         LOGFIRE_API_KEY=os.getenv("LOGFIRE_API_KEY", ""),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
         CORS_ORIGINS=os.getenv("CORS_ORIGINS", "*"),

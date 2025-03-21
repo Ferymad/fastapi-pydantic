@@ -20,13 +20,13 @@ from pydantic import BaseModel, ValidationError, Field, create_model
 
 from app.config import Settings, get_settings
 from app.models import (
-    ValidationRequest, 
+    ValidationRequest as OldValidationRequest, 
     ValidationResponse, 
     ValidationLevel,
     StructuralValidationResult, 
     SemanticValidationResult
 )
-from app.auth import get_optional_api_key
+from app.auth import get_optional_api_key, verify_api_key
 from app.monitoring import configure_monitoring, log_request, log_response
 from app.validation import (
     create_model_from_schema,
@@ -34,6 +34,8 @@ from app.validation import (
     perform_semantic_validation
 )
 from app.ai_agent import initialize_validation_agent
+from app.api import api_router
+from app.repository import SchemaRepository, get_schema_repository
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -227,10 +229,14 @@ async def root():
     """
     return RedirectResponse(url="/static/index.html")
 
+# Include API routes
+app.include_router(api_router)
+
 class ValidationRequest(BaseModel):
     """Request body for validation endpoint"""
     data: Dict[str, Any] = Field(..., description="Content to validate")
-    schema: Dict[str, Any] = Field(..., description="Pydantic schema to validate against")
+    schema: Optional[Dict[str, Any]] = Field(None, description="Pydantic schema to validate against")
+    schema_name: Optional[str] = Field(None, description="Name of a stored schema to validate against")
     type: str = Field(
         "generic", 
         description="Type of validation to perform (generic, recommendation, summary, etc.)"
@@ -239,6 +245,24 @@ class ValidationRequest(BaseModel):
         ValidationLevel.STANDARD, 
         description="Level of semantic validation strictness"
     )
+    
+    model_config = {
+        "extra": "forbid",
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "data": {
+                        "customer_name": "John Doe",
+                        "email": "john@example.com",
+                        "order_total": 99.99
+                    },
+                    "schema_name": "customer_order",
+                    "type": "order",
+                    "level": "standard"
+                }
+            ]
+        }
+    }
 
 @app.post(
     "/validate", 
@@ -246,195 +270,133 @@ class ValidationRequest(BaseModel):
     tags=["validation"],
     status_code=status.HTTP_200_OK,
 )
-async def validate_ai_output(request: Request):
+async def validate_ai_output(
+    request: Request,
+    repository: SchemaRepository = Depends(get_schema_repository)
+):
     """
-    Validate AI-generated output against provided schema and perform semantic validation.
+    Validate AI-generated output against a schema.
     
-    This endpoint:
-    1. Performs standard Pydantic validation using the provided schema
-    2. Performs semantic validation to check for coherence and quality
-    3. Returns both validation results with detailed feedback
+    This endpoint validates the provided data against either:
+    1. A schema provided directly in the request, or
+    2. A schema retrieved from the repository by name
     
-    The validation_level parameter determines how strict the semantic validation is:
-    - basic: Minimal semantic checks
-    - standard: Balanced semantic validation (default)
-    - strict: Thorough semantic validation with high standards
+    The validation includes structural validation using Pydantic and,
+    if requested, semantic validation using PydanticAI.
     
-    Schema Format Support:
-    - You can specify field formats using the 'format' attribute (e.g., "format": "email")
-    - Supported formats: email, date, url, etc.
-    - You can provide regex patterns with the 'pattern' attribute
-    - You can specify min_length, max_length for strings and arrays
-    - You can specify min, max for numbers and integers
+    Args:
+        request: HTTP request with validation details
+        repository: Schema repository for retrieving stored schemas
+        
+    Returns:
+        ValidationResponse with validation results
     
-    Example Schema with Format Validation:
-    ```json
-    {
-      "email": {"type": "string", "required": true, "format": "email"},
-      "date": {"type": "string", "required": true, "format": "date"},
-      "phone": {"type": "string", "required": true, "pattern": "^\\d{10}$"}
-    }
-    ```
+    Raises:
+        HTTPException: For invalid requests or validation errors
     """
-    # Handle JSON parsing first to avoid complex errors
+    # Extract request body
     try:
-        json_body = await request.json()
+        body = await request.json()
+        validation_request = ValidationRequest.model_validate(body)
     except Exception as e:
-        logger.error(f"JSON parsing error: {str(e)}")
-        return JSONResponse(
-            status_code=400,
-            content={
-                "detail": [{
-                    "type": "json_invalid",
-                    "loc": ["body"],
-                    "msg": f"JSON decode error: {str(e)}",
-                    "input": {},
-                    "ctx": {"error": str(e)}
-                }]
-            }
+        logger.error(f"Invalid request format: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request format: {str(e)}"
         )
     
-    # Validate the request with Pydantic
-    try:
-        validation_request = ValidationRequest(**json_body)
-    except ValidationError as e:
-        logger.error(f"Validation request validation error: {str(e)}")
-        return JSONResponse(
-            status_code=422,
-            content={"detail": e.errors()}
-        )
-        
-    validation_response = ValidationResponse(
-        is_valid=False,
-        structural_validation=StructuralValidationResult(
-            is_structurally_valid=False,
-            errors=[]
-        ),
-        semantic_validation=None
-    )
+    # Check for API key
+    api_key = get_optional_api_key(request)
     
-    try:
-        logger.debug(f"Validation request received - type: {validation_request.type}, level: {validation_request.level}")
-        
-        # Enrich schema with format information if missing
-        enriched_schema = validation_request.schema.copy()
-        type_format_enrichment = {}
-        
-        # Common enrichment patterns based on field names
-        if validation_request.type == "order" or validation_request.type == "user" or validation_request.type == "personal":
-            type_format_enrichment = {
-                "email": {"format": "email"},
-                "birth_date": {"format": "date"},
-                "date_of_birth": {"format": "date"},
-                "order_date": {"format": "date"}, 
-                "registration_date": {"format": "date"},
-                "phone": {"pattern": r"^\d{10}$"},
-                "phone_number": {"pattern": r"^\d{10}$"},
-                "contact_phone": {"pattern": r"^\d{10}$"},
-                "zipcode": {"pattern": r"^\d{5}(-\d{4})?$"},
-                "postal_code": {"pattern": r"^\d{5}(-\d{4})?$"}
-            }
-            
-            # Apply enrichment where applicable
-            for field_name, field_def in enriched_schema.items():
-                if field_name in type_format_enrichment and field_def.get("type") == "string":
-                    # Only add format if not already specified
-                    for key, value in type_format_enrichment[field_name].items():
-                        if key not in field_def:
-                            field_def[key] = value
-        
-        # Create a dynamic Pydantic model from the schema
-        start_time = time.time()
-        try:
-            model_class = create_model_from_schema(enriched_schema)
-            logger.debug("Dynamic model created successfully")
-        except Exception as e:
-            logger.error(f"Schema parsing error: {e}")
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "detail": f"Invalid schema: {str(e)}",
-                    "is_valid": False
-                }
+    # Get the schema to validate against
+    validation_schema = None
+    
+    # If schema_name is provided, retrieve schema from repository
+    if validation_request.schema_name:
+        if not api_key:
+            # API key is required for schema repository access
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API key required for schema repository access"
             )
         
+        # Verify API key
+        try:
+            await verify_api_key(api_key)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key"
+            )
+        
+        try:
+            # Get schema from repository
+            schema_response = await repository.get_schema(validation_request.schema_name)
+            validation_schema = schema_response.schema
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Failed to retrieve schema: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Schema '{validation_request.schema_name}' not found or could not be loaded"
+            )
+    # If schema is provided directly in the request, use it
+    elif validation_request.schema:
+        validation_schema = validation_request.schema
+    else:
+        # Neither schema nor schema_name provided
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either 'schema' or 'schema_name' must be provided"
+        )
+    
+    # Perform validation
+    try:
+        # Create Pydantic model from schema
+        schema_model = create_model_from_schema(validation_schema)
+        
         # Perform structural validation
-        structural_validation_result, data = await perform_structural_validation(
-            model_class=model_class,
-            data=validation_request.data
+        structural_result, validated_data = await perform_structural_validation(
+            validation_request.data, 
+            schema_model
         )
-        validation_response.structural_validation = structural_validation_result
         
-        if not structural_validation_result.is_structurally_valid:
-            logger.info(f"Structural validation failed with {len(structural_validation_result.errors)} errors")
+        # Prepare response
+        is_valid = structural_result.is_structurally_valid
+        semantic_result = None
+        
+        # Perform semantic validation if requested and structurally valid
+        if (
+            structural_result.is_structurally_valid 
+            and validation_request.level != ValidationLevel.STRUCTURE_ONLY
+            and settings.SEMANTIC_VALIDATION_ENABLED
+        ):
+            semantic_result = await perform_semantic_validation(
+                validation_request.data,
+                validation_schema,
+                validation_request.type,
+                validation_request.level,
+            )
             
-            # Enhance error messages for common validation failures
-            for error in validation_response.structural_validation.errors:
-                if error["type"] == "string_type":
-                    error["suggestion"] = f"The value for '{error['loc']}' must be a string"
-                elif error["type"] == "float_parsing":
-                    error["suggestion"] = f"The value for '{error['loc']}' must be a valid number, not a string"
-                elif error["type"] == "list_type":
-                    error["suggestion"] = f"The value for '{error['loc']}' must be an array/list, not a string"
-                elif error["type"] == "value_error.email":
-                    error["suggestion"] = f"'{error['loc']}' must be a valid email address format (e.g., user@example.com)"
-                elif "date" in error["type"]:
-                    error["suggestion"] = f"'{error['loc']}' must be in YYYY-MM-DD format (e.g., 2023-10-15)"
-                elif "pattern" in error["type"]:
-                    error["suggestion"] = f"'{error['loc']}' does not match the required pattern"
-                
-            validation_response.is_valid = False
-            return validation_response
+            # Update overall validity based on semantic validation
+            if semantic_result and not semantic_result.is_semantically_valid:
+                is_valid = False
         
-        # If semantic validation is requested, perform it
-        if validation_request.level != "structure_only":
-            logger.debug(f"Performing semantic validation at level: {validation_request.level}")
-            try:
-                semantic_validation_result = await perform_semantic_validation(
-                    validation_type=validation_request.type,
-                    validation_level=validation_request.level,
-                    data=data,
-                    schema=enriched_schema,  # Use enriched schema for semantic validation
-                    structural_errors=structural_validation_result.errors
-                )
-                validation_response.semantic_validation = semantic_validation_result
-                validation_response.is_valid = (
-                    structural_validation_result.is_structurally_valid and 
-                    semantic_validation_result.is_semantically_valid
-                )
-                
-                elapsed_time = time.time() - start_time
-                logger.info(
-                    f"Validation completed in {elapsed_time:.2f}s - "
-                    f"structural: {structural_validation_result.is_structurally_valid}, "
-                    f"semantic: {semantic_validation_result.is_semantically_valid}"
-                )
-            except Exception as e:
-                logger.error(f"Semantic validation error: {e}", exc_info=True)
-                validation_response.semantic_validation = SemanticValidationResult(
-                    is_semantically_valid=False,
-                    semantic_score=0.0,
-                    issues=[f"Error during semantic validation: {str(e)}"],
-                    suggestions=["Try a different validation level or check the system configuration."]
-                )
-                validation_response.is_valid = False
-        else:
-            # For structure_only validation, only structural validation matters
-            validation_response.is_valid = structural_validation_result.is_structurally_valid
-            elapsed_time = time.time() - start_time
-            logger.info(f"Structural validation completed in {elapsed_time:.2f}s - result: {validation_response.is_valid}")
-    
-    except Exception as e:
-        logger.error(f"Unexpected error during validation: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": f"Validation service error: {str(e)}",
-                "is_valid": False
-            }
+        # Return validation response
+        response = ValidationResponse(
+            is_valid=is_valid,
+            structural_validation=structural_result,
+            semantic_validation=semantic_result
         )
-    
-    return validation_response
+        
+        return response
+    except Exception as e:
+        logger.error(f"Validation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Validation error: {str(e)}"
+        )
 
 @app.post("/test-validation", response_model=ValidationResponse, tags=["validation"])
 async def test_validation(

@@ -1,0 +1,11 @@
+{
+  "schema": {
+    "customer_name": {
+      "required": true,
+      "type": "string"
+    }
+  },
+  "description": "Validation schema for customer orders",
+  "name": "customer_order",
+  "validation_level": "standard"
+}

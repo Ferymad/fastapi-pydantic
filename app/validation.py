@@ -12,7 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel, ValidationError, create_model, Field, EmailStr, field_validator, AfterValidator, BeforeValidator
 from pydantic_core import core_schema, PydanticCustomError
 
-from app.models import StructuralValidationResult, SemanticValidationResult
+from app.models import StructuralValidationResult, SemanticValidationResult, ValidationLevel
 from app.ai_agent import get_validation_agent
 
 logger = logging.getLogger(__name__)
@@ -75,11 +75,8 @@ def validate_name_content(value: str) -> str:
     
     return value
 
-# Create a NameStr type using Annotated
-NameStr = Annotated[
-    str,
-    AfterValidator(validate_name_content)
-]
+# Name string type - defined after the validation function
+NameStr = Annotated[str, BeforeValidator(validate_name_content)]
 
 def name_schema_customizer(field_name: str):
     """Return a function that customizes the schema for name fields"""
@@ -95,7 +92,9 @@ def name_schema_customizer(field_name: str):
 
 def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
     """
-    Create a dynamic Pydantic model from a schema definition.
+    Create a Pydantic model dynamically from a schema definition.
+    
+    This function generates a Pydantic model class based on the provided schema.
     
     Args:
         schema: A dictionary defining the schema structure
@@ -112,14 +111,30 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
         
         for field_name, field_def in schema.items():
             # Extract field type, required status and other validation rules
-            field_type = field_def.get("type", Any)
-            is_required = field_def.get("required", False)
-            format_type = field_def.get("format", None)
-            pattern = field_def.get("pattern", None)
-            min_length = field_def.get("min_length", None)
-            max_length = field_def.get("max_length", None)
-            min_value = field_def.get("min", None)
-            max_value = field_def.get("max", None)
+            # Handle both raw dict and SchemaField objects
+            if hasattr(field_def, 'model_dump'):
+                # Convert SchemaField to dict
+                field_def_dict = field_def.model_dump()
+                field_type = field_def_dict.get("type", Any)
+                is_required = field_def_dict.get("required", False)
+                format_type = None  # SchemaField doesn't have format
+                pattern = field_def_dict.get("pattern", None)
+                min_length = field_def_dict.get("min_length", None)
+                max_length = field_def_dict.get("max_length", None)
+                min_value = field_def_dict.get("gt", None)
+                max_value = field_def_dict.get("lt", None)
+                items_def = field_def_dict.get("items", None)
+            else:
+                # Handle raw dict
+                field_type = field_def.get("type", Any)
+                is_required = field_def.get("required", False)
+                format_type = field_def.get("format", None)
+                pattern = field_def.get("pattern", None)
+                min_length = field_def.get("min_length", None)
+                max_length = field_def.get("max_length", None)
+                min_value = field_def.get("gt", None) or field_def.get("min", None)
+                max_value = field_def.get("lt", None) or field_def.get("max", None)
+                items_def = field_def.get("items", None)
             
             field_args = {}
             
@@ -185,42 +200,62 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
             elif field_type == "number":
                 base_type = float
                 if min_value is not None:
-                    field_args["ge"] = float(min_value)
+                    field_args["gt"] = float(min_value)
                 if max_value is not None:
-                    field_args["le"] = float(max_value)
+                    field_args["lt"] = float(max_value)
                     
             elif field_type == "integer":
                 base_type = int
                 if min_value is not None:
-                    field_args["ge"] = int(min_value)
+                    field_args["gt"] = int(min_value)
                 if max_value is not None:
-                    field_args["le"] = int(max_value)
+                    field_args["lt"] = int(max_value)
                     
             elif field_type == "boolean":
                 base_type = bool
                 
             elif field_type == "array":
-                # Add array validations (min_items, max_items)
-                min_items = field_def.get("min_items", None)
-                max_items = field_def.get("max_items", None)
-                item_type = field_def.get("items", {}).get("type", "any")
-                
-                if item_type == "string":
-                    base_type = List[str]
-                elif item_type == "number":
-                    base_type = List[float]
-                elif item_type == "integer":
-                    base_type = List[int]
-                elif item_type == "boolean":
-                    base_type = List[bool]
+                # Need to determine the item type for proper validation
+                if items_def:
+                    # Get item type from items definition
+                    if isinstance(items_def, dict):
+                        item_type = items_def.get("type", "any")
+                    else:
+                        item_type = "any"  # Default if items is not a dict
+                    
+                    # Create appropriate List type based on item type
+                    if item_type == "string":
+                        base_type = List[str]
+                    elif item_type == "number":
+                        base_type = List[float]
+                    elif item_type == "integer":
+                        base_type = List[int]
+                    elif item_type == "boolean":
+                        base_type = List[bool]
+                    else:
+                        base_type = List[Any]
                 else:
+                    # Default to List[Any] if no items definition
                     base_type = List[Any]
-                    
-                if min_items is not None:
-                    field_args["min_length"] = min_items
-                if max_items is not None:
-                    field_args["max_length"] = max_items
-                    
+                
+                # Add array validations
+                if min_length is not None:
+                    field_args["min_length"] = min_length
+                if max_length is not None:
+                    field_args["max_length"] = max_length
+                
+                # Create validator to ensure it's actually a list
+                validator_name = f"validate_{field_name}_is_array"
+                
+                def create_array_validator(field: str):
+                    def validate_array(v):
+                        if not isinstance(v, list):
+                            raise ValueError(f"{field} must be an array/list")
+                        return v
+                    return validate_array
+                
+                validators[validator_name] = field_validator(field_name, mode='before')(create_array_validator(field_name))
+                
             elif field_type == "object":
                 base_type = Dict[str, Any]
             else:
@@ -253,46 +288,60 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
         raise ValueError(f"Invalid schema: {str(e)}")
 
 async def perform_structural_validation(
-    model_class: Type[BaseModel],
-    data: Dict[str, Any]
+    data: Dict[str, Any], model_class: Type[BaseModel]
 ) -> Tuple[StructuralValidationResult, Dict[str, Any]]:
     """
-    Perform structural validation using a Pydantic model.
+    Perform structural validation of data against a Pydantic model.
+    
+    This function validates the provided data against the given Pydantic model class
+    and returns a validation result along with the validated data (or original data if validation fails).
     
     Args:
-        model_class: The Pydantic model class to validate against
-        data: The data to validate
+        data: Data to validate
+        model_class: Pydantic model class to validate against
         
     Returns:
-        A tuple containing the validation result and the validated data (if valid)
+        Tuple containing validation result and validated data
     """
     try:
-        # Validate data against the model
-        validated_instance = model_class(**data)
-        validated_data = validated_instance.model_dump()
+        # Validate data against model
+        validated_data = model_class.model_validate(data)
         
         # Return successful validation result
-        result = StructuralValidationResult(
+        return StructuralValidationResult(
             is_structurally_valid=True,
-            errors=[]
-        )
-        return result, validated_data
-        
+            errors=[],
+            suggestions=[]
+        ), validated_data.model_dump()
     except ValidationError as e:
         # Process validation errors
-        error_details = []
-        for error in e.errors():
-            error_details.append({
-                "loc": ".".join(str(loc) for loc in error["loc"]),
-                "type": error["type"],
-                "msg": error["msg"]
-            })
+        errors = e.errors()
         
-        # Return validation error result
+        # Enhance error messages with suggestions
+        for error in errors:
+            if error.get("type") == "string_type":
+                error["suggestion"] = f"The value for '{error['loc']}' must be a string"
+            elif error.get("type") == "float_parsing":
+                error["suggestion"] = f"The value for '{error['loc']}' must be a valid number, not a string"
+            elif error.get("type") == "list_type":
+                error["suggestion"] = f"The value for '{error['loc']}' must be an array/list, not a string"
+            elif error.get("type") == "value_error.email":
+                error["suggestion"] = f"'{error['loc']}' must be a valid email address format (e.g., user@example.com)"
+            elif "date" in error.get("type", ""):
+                error["suggestion"] = f"'{error['loc']}' must be in YYYY-MM-DD format (e.g., 2023-10-15)"
+            elif "pattern" in error.get("type", ""):
+                error["suggestion"] = f"'{error['loc']}' does not match the required pattern"
+        
+        # Return failed validation result
         result = StructuralValidationResult(
             is_structurally_valid=False,
-            errors=error_details
+            errors=errors,
+            suggestions=[
+                f"Fix validation error: {error.get('msg', '')}" 
+                for error in errors
+            ]
         )
+        
         return result, data
 
 async def basic_semantic_validation(
@@ -413,24 +462,25 @@ async def basic_semantic_validation(
     )
 
 async def perform_semantic_validation(
-    validation_type: str,
-    validation_level: str,
     data: Dict[str, Any],
     schema: Dict[str, Any],
-    structural_errors: Optional[List[Dict[str, Any]]] = None
-) -> SemanticValidationResult:
+    validation_type: str = "generic",
+    validation_level: ValidationLevel = ValidationLevel.STANDARD,
+) -> Optional[SemanticValidationResult]:
     """
-    Perform semantic validation using PydanticAI.
+    Perform semantic validation of data using PydanticAI.
+    
+    This function validates the semantic coherence and quality of the data
+    based on the provided schema, validation type, and validation level.
     
     Args:
-        validation_type: Type of validation to perform
-        validation_level: Level of validation strictness
         data: Data to validate
-        schema: Schema to validate against
-        structural_errors: Errors from structural validation, if any
+        schema: Schema definition
+        validation_type: Type of validation to perform (generic, recommendation, summary, etc.)
+        validation_level: Level of semantic validation strictness
         
     Returns:
-        A SemanticValidationResult object
+        Semantic validation result, or None if semantic validation is disabled
     """
     # Ensure data and schema are valid dictionaries
     if not isinstance(data, dict) or not isinstance(schema, dict):
@@ -474,7 +524,7 @@ async def perform_semantic_validation(
             validation_level, 
             data, 
             schema, 
-            structural_errors
+            None
         )
     
     try:
@@ -551,5 +601,5 @@ async def perform_semantic_validation(
             validation_level,
             data,
             schema,
-            structural_errors
+            None
         ) 

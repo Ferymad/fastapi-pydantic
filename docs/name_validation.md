@@ -104,4 +104,4 @@ Planned improvements include:
 
 1. Enhanced support for international names
 2. Machine learning-based name validation
-3. Configurable validation rules 
+3. Configurable validation rules

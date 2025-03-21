@@ -47,4 +47,38 @@ async def get_optional_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
+    return x_api_key
+
+async def verify_api_key(
+    x_api_key: str = Header(..., description="API key for authentication"),
+    settings: Settings = Depends(get_settings)
+) -> str:
+    """
+    Require and validate the API key for protected endpoints.
+    
+    Unlike get_optional_api_key, this function always requires an API key
+    to be present and valid, regardless of whether AUTH_ENABLED is True or False.
+    
+    Args:
+        x_api_key: The API key provided in the X-API-Key header
+        settings: Application settings
+        
+    Returns:
+        The validated API key
+        
+    Raises:
+        HTTPException: If the API key is missing or invalid
+    """
+    # For development convenience, if authentication is disabled, accept any API key
+    if not settings.AUTH_ENABLED:
+        return x_api_key
+    
+    # If authentication is enabled, validate API key
+    if x_api_key != settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
     return x_api_key 

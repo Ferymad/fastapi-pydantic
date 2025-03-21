@@ -1,0 +1,10 @@
+{
+  "name": "product_review",
+  "description": "Schema for products",
+  "current_version": "1.0",
+  "created_at": "2025-03-21T20:10:32.800341",
+  "updated_at": "2025-03-21T20:10:32.800341",
+  "versions": [
+    "1.0"
+  ]
+}

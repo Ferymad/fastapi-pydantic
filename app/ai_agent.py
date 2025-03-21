@@ -11,14 +11,7 @@ import logging
 import importlib.metadata
 import requests
 import asyncio
-# Add error handling around nest_asyncio import
-try:
-    import nest_asyncio
-    HAS_NEST_ASYNCIO = True
-except ImportError:
-    HAS_NEST_ASYNCIO = False
-    logging.getLogger(__name__).warning("nest_asyncio not installed. Some asyncio features might not work correctly.")
-
+import nest_asyncio
 from typing import Dict, Any, List, Optional
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -104,16 +97,6 @@ def initialize_validation_agent():
         logger.info("Logfire is available and will be used for monitoring")
     except ImportError:
         logger.info("Logfire not available, continuing without monitoring")
-
-    # Apply nest_asyncio if available
-    if HAS_NEST_ASYNCIO:
-        try:
-            nest_asyncio.apply()
-            logger.info("Applied nest_asyncio for nested event loop support")
-        except Exception as e:
-            logger.warning(f"Failed to apply nest_asyncio: {str(e)}")
-    else:
-        logger.warning("nest_asyncio not available, semantic validation may be limited")
 
     try:
         # Get settings for API key
@@ -271,16 +254,6 @@ async def perform_semantic_validation(
     Returns:
         Semantic validation result
     """
-    # Check if nest_asyncio is available
-    if not HAS_NEST_ASYNCIO:
-        logger.warning("nest_asyncio is not installed. Semantic validation will use fallback.")
-        return SemanticValidationResult(
-            is_semantically_valid=False,
-            semantic_score=0.0,
-            issues=["Semantic validation is disabled: required dependencies are missing."],
-            suggestions=["Install the required dependencies: pip install nest_asyncio pydantic-ai"]
-        )
-    
     # Get the validation agent
     validation_agent = get_validation_agent()
     

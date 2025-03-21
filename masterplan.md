@@ -12,6 +12,7 @@ This document outlines the master plan for implementing an AI Output Validation 
 4. Ensure data reliability with standardized validation patterns
 5. Enhance validation capabilities with PydanticAI for semantic validation
 6. Implement performance monitoring using Pydantic Logfire
+7. Create a Schema Repository for storing and managing reusable validation schemas
 
 ## Architecture Design
 
@@ -101,10 +102,13 @@ ai-validation-service/
 │   ├── models.py            # Pydantic models for validation
 │   ├── auth.py              # Authentication utilities
 │   ├── ai_agent.py          # PydanticAI integration
-│   └── monitoring.py        # Logfire configuration and metrics
-├── Dockerfile               # Container definition
-├── requirements.txt         # Python dependencies
-└── README.md                # Project documentation
+│   ├── monitoring.py        # Logfire configuration and metrics
+│   ├── repository/          # Schema repository implementation
+│   │   ├── __init__.py      # Repository package initialization
+│   │   ├── models.py        # Schema repository models
+│   │   ├── storage.py       # Storage implementation (file-based or database)
+│   │   └── service.py       # Schema repository service layer
+│   └── README.md                # Project documentation
 ```
 
 ### API Endpoints
@@ -115,6 +119,13 @@ ai-validation-service/
 | `/enhance-validate/{validation_type}` | POST | Enhanced validation with semantic checks | API Key |
 | `/health` | GET | Health check endpoint | None |
 | `/monitoring` | GET | Validation performance metrics | API Key |
+| `/schemas` | GET | List all available schemas | API Key |
+| `/schemas` | POST | Create a new schema | API Key |
+| `/schemas/{schema_name}` | GET | Get schema details | API Key |
+| `/schemas/{schema_name}` | PUT | Update a schema | API Key |
+| `/schemas/{schema_name}` | DELETE | Delete a schema | API Key |
+| `/schemas/{schema_name}/versions` | GET | Get schema version history | API Key |
+| `/schemas/{schema_name}/versions/{version}` | GET | Get specific schema version | API Key |
 
 ### Pydantic Models
 
@@ -385,4 +396,85 @@ For higher loads, consider:
 4. [Coolify Documentation](https://coolify.io/docs/)
 5. [Hetzner Cloud Documentation](https://docs.hetzner.com/cloud/)
 6. [PydanticAI Documentation](https://ai.pydantic.dev/)
-7. [Pydantic Logfire Documentation](https://docs.logfire.dev/pydantic-logfire/) 
+7. [Pydantic Logfire Documentation](https://docs.logfire.dev/pydantic-logfire/)
+
+## Schema Repository Implementation
+
+### Schema Storage
+
+The Schema Repository will initially use file-based storage with the following structure:
+
+```
+data/
+├── schemas/
+│   ├── schema1/
+│   │   ├── 1.0.json
+│   │   ├── 1.1.json
+│   │   └── metadata.json
+│   ├── schema2/
+│   │   ├── 1.0.json
+│   │   └── metadata.json
+│   └── ...
+```
+
+In the future, this can be upgraded to use a database storage solution.
+
+### Schema Models
+
+```python
+# Schema models for storage and API
+class SchemaField(BaseModel):
+    """Definition of a field in a validation schema"""
+    type: str
+    required: bool = False
+    description: Optional[str] = None
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    pattern: Optional[str] = None
+    enum: Optional[List[Any]] = None
+    gt: Optional[float] = None
+    lt: Optional[float] = None
+    items: Optional[Dict[str, Any]] = None
+    
+class SchemaDefinition(BaseModel):
+    """Schema definition stored in the repository"""
+    name: str
+    description: str
+    version: str
+    created_at: datetime
+    updated_at: datetime
+    schema: Dict[str, SchemaField]
+    validation_level: Literal["structure_only", "basic", "standard", "strict"]
+    example: Optional[Dict[str, Any]] = None
+```
+
+### Validation Flow with Schema Repository
+
+```mermaid
+sequenceDiagram
+    participant Client as Client Application
+    participant API as FastAPI App
+    participant Repo as Schema Repository
+    participant Validator as Validation Engine
+    participant PydanticAI as PydanticAI Agent
+    
+    Client->>API: POST /validate with schema_name
+    API->>Repo: Get schema by name
+    Repo->>API: Return schema definition
+    API->>Validator: Validate data against schema
+    
+    alt Enhanced Validation
+        API->>PydanticAI: Request semantic validation
+        PydanticAI->>API: Return semantic insights
+    end
+    
+    API->>Client: Return validation results
+```
+
+### Future Enhancements
+
+- Schema categories/tags for better organization
+- Schema sharing between organizations
+- Schema validation statistics
+- Schema suggestions based on data
+- Automatic schema generation from sample data 
