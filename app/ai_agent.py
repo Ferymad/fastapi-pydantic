@@ -120,9 +120,9 @@ def initialize_validation_agent():
         
         # Simplest possible initialization based on docs
         try:
-            logger.info("Initializing agent with model gpt-3.5-turbo")
+            logger.info("Initializing agent with model gpt-4o-mini")
             _validation_agent = Agent(
-                model="openai:gpt-3.5-turbo"
+                model="openai:gpt-4o-mini"
             )
             # Simple verification
             if _validation_agent is None:

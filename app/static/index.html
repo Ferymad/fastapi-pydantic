@@ -14,6 +14,8 @@
             --dark-bg: #212529;
             --success-color: #2ecc71;
             --error-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
         }
         
         * {
@@ -32,61 +34,99 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 20px;
+            padding: 2rem;
         }
         
         header {
-            background-color: var(--dark-bg);
+            background-color: var(--primary-color);
             color: white;
             padding: 2rem 0;
+            margin-bottom: 2rem;
         }
         
-        .hero {
+        header .container {
             display: flex;
-            flex-direction: column;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 2rem 0;
         }
         
-        .hero h1 {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        
+        nav ul li a {
             color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
         
-        .hero p {
-            font-size: 1.2rem;
-            max-width: 800px;
-            margin: 0 auto;
+        nav ul li a:hover {
+            color: var(--accent-color);
         }
         
-        main {
-            padding: 3rem 0;
+        h1, h2, h3, h4, h5, h6 {
+            margin-bottom: 1rem;
+            line-height: 1.3;
+            color: var(--secondary-color);
         }
         
-        section {
-            margin-bottom: 3rem;
+        h1 {
+            font-size: 2.5rem;
         }
         
         h2 {
             font-size: 2rem;
-            margin-bottom: 1.5rem;
-            color: var(--primary-color);
+            margin-top: 3rem;
         }
         
-        .features {
+        p {
+            margin-bottom: 1.5rem;
+        }
+        
+        .status {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .status-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .status-indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 0.75rem;
+            background-color: var(--success-color);
+        }
+        
+        .status h3 {
+            margin: 0;
+        }
+        
+        .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 2rem;
+            margin: 2rem 0;
         }
         
         .feature-card {
-            background: white;
+            background-color: white;
             border-radius: 8px;
-            padding: 1.5rem;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
             transition: transform 0.3s ease;
         }
         
@@ -95,128 +135,156 @@
         }
         
         .feature-card h3 {
-            font-size: 1.25rem;
+            color: var(--primary-color);
             margin-bottom: 1rem;
-            color: var(--secondary-color);
         }
         
-        .steps {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: var(--accent-color);
         }
         
-        .step {
-            display: flex;
-            gap: 1.5rem;
-            align-items: flex-start;
-        }
-        
-        .step-number {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            background-color: var(--primary-color);
+        .cta-section {
+            background-color: var(--secondary-color);
             color: white;
-            border-radius: 50%;
-            font-weight: bold;
-            flex-shrink: 0;
-        }
-        
-        .step-content {
-            flex-grow: 1;
-        }
-        
-        .validation-types {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-        }
-        
-        .validation-type {
-            background: white;
+            padding: 3rem 0;
+            margin: 3rem 0;
+            text-align: center;
             border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
-        .validation-type h3 {
-            font-size: 1.25rem;
-            margin-bottom: 0.75rem;
-            color: var(--secondary-color);
+        .cta-section h2 {
+            color: white;
+        }
+        
+        .button {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            margin: 0.5rem;
+        }
+        
+        .button:hover {
+            background-color: #3ba4cc;
+            transform: translateY(-2px);
+        }
+        
+        .button.secondary {
+            background-color: transparent;
+            border: 2px solid white;
+        }
+        
+        .button.secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1);
         }
         
         code {
-            background-color: #f4f4f4;
-            border-radius: 4px;
-            padding: 2px 5px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
+            background-color: #f1f1f1;
+            padding: 0.15rem 0.3rem;
+            border-radius: 3px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
         }
         
         pre {
-            background-color: #f4f4f4;
-            border-radius: 8px;
-            padding: 1rem;
-            overflow-x: auto;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            margin: 1rem 0;
-        }
-        
-        .cta {
-            background-color: var(--primary-color);
+            background-color: var(--dark-bg);
             color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            transition: background-color 0.3s ease;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+            font-family: 'Fira Code', monospace;
         }
         
-        .cta:hover {
-            background-color: var(--secondary-color);
+        .json-key {
+            color: #f8c291;
+        }
+        
+        .json-string {
+            color: #78e08f;
+        }
+        
+        .json-number {
+            color: #82ccdd;
+        }
+        
+        .json-boolean {
+            color: #b71540;
         }
         
         footer {
             background-color: var(--dark-bg);
             color: white;
             padding: 2rem 0;
-            text-align: center;
+            margin-top: 3rem;
         }
         
-        footer p {
-            margin-bottom: 1rem;
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+        
+        .footer-column h4 {
+            color: white;
+            margin-bottom: 1.5rem;
+        }
+        
+        .footer-column ul {
+            list-style: none;
+        }
+        
+        .footer-column ul li {
+            margin-bottom: 0.75rem;
+        }
+        
+        .footer-column ul li a {
+            color: #adb5bd;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .footer-column ul li a:hover {
+            color: white;
+        }
+        
+        .copyright {
+            margin-top: 2rem;
+            text-align: center;
+            color: #6c757d;
+            padding-top: 2rem;
+            border-top: 1px solid #343a40;
         }
         
         @media (max-width: 768px) {
-            .hero h1 {
+            header .container {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            nav ul {
+                margin-top: 1rem;
+                justify-content: center;
+            }
+            
+            nav ul li {
+                margin: 0 0.75rem;
+            }
+            
+            h1 {
                 font-size: 2rem;
             }
             
-            .hero p {
-                font-size: 1rem;
-            }
-            
-            h2 {
-                font-size: 1.75rem;
-            }
-            
-            .features {
+            .feature-grid {
                 grid-template-columns: 1fr;
-            }
-            
-            .step {
-                flex-direction: column;
-            }
-            
-            .step-number {
-                margin-bottom: 0.5rem;
             }
         }
     </style>
@@ -224,169 +292,180 @@
 <body>
     <header>
         <div class="container">
-            <div class="hero">
-                <h1>AI Output Validation Service</h1>
-                <p>A lightweight validation service for ensuring AI outputs conform to expected schemas</p>
-            </div>
+            <h1>AI Output Validation Service</h1>
+            <nav>
+                <ul>
+                    <li><a href="/docs">API Docs</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#usage">Usage</a></li>
+                    <li><a href="#status">Status</a></li>
+                </ul>
+            </nav>
         </div>
     </header>
     
-    <main class="container">
-        <section>
-            <h2>What is the AI Output Validation Service?</h2>
-            <p>The AI Output Validation Service is a dedicated API built with FastAPI and Pydantic v2 that validates outputs from AI agents against predefined schemas. It ensures that AI-generated content meets your expected structure and requirements before it flows through your automation pipelines.</p>
-        </section>
-        
-        <section>
-            <h2>Key Features</h2>
-            <div class="features">
-                <div class="feature-card">
-                    <h3>Schema Validation</h3>
-                    <p>Validate AI outputs against predefined schemas using Pydantic v2's powerful validation capabilities.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>Multiple Validation Types</h3>
-                    <p>Support for various output types including generic outputs, recommendations, summaries, and classifications.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>Detailed Error Reporting</h3>
-                    <p>Get comprehensive error messages that pinpoint exactly what's wrong with your AI output.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>n8n Integration</h3>
-                    <p>Seamlessly integrate with n8n workflows to validate AI outputs before further processing.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>API Key Authentication</h3>
-                    <p>Secure your validation endpoints with API key authentication.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>Fast Performance</h3>
-                    <p>Built with FastAPI and Pydantic v2 for high-performance validation.</p>
-                </div>
+    <div class="container">
+        <section class="status" id="status">
+            <div class="status-header">
+                <div class="status-indicator"></div>
+                <h3>Service Status: Operational</h3>
             </div>
+            <p>All systems are running normally. The AI Output Validation Service is processing requests as expected with PydanticAI integration active.</p>
+            <p><strong>Version:</strong> 0.1.0</p>
+            <p><strong>Environment:</strong> Production</p>
+            <p><strong>Last Updated:</strong> <span id="last-updated"></span></p>
         </section>
         
-        <section>
-            <h2>How It Works</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>Generate output with an AI agent</h3>
-                        <p>Create content with any AI system such as OpenAI's GPT, Anthropic's Claude, or your custom AI solution.</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>Send the output to our validation endpoint</h3>
-                        <p>Make a POST request to <code>/validate/{validation_type}</code> with your AI output in the request body.</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>Receive validation results</h3>
-                        <p>Get back a standardized response indicating whether the output is valid or invalid, with detailed error messages if validation fails.</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">4</div>
-                    <div class="step-content">
-                        <h3>Continue your workflow with confidence</h3>
-                        <p>Process the validated data in your automation pipelines knowing it conforms to your expected structure.</p>
-                    </div>
-                </div>
+        <h2 id="features">Features</h2>
+        <p>Our AI Output Validation Service provides reliable validation for AI-generated content, ensuring both structural and semantic validity.</p>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="card-icon">🔍</div>
+                <h3>Dynamic Schema Validation</h3>
+                <p>Validate outputs against custom schemas defined on-the-fly.</p>
+                <p>Our service uses Pydantic v2 to ensure type safety and structural validity of your AI outputs.</p>
             </div>
-        </section>
-        
-        <section>
-            <h2>Supported Validation Types</h2>
-            <div class="validation-types">
-                <div class="validation-type">
-                    <h3>Generic</h3>
-                    <p>Basic validation for any AI output with a response text and optional confidence score.</p>
-                </div>
-                <div class="validation-type">
-                    <h3>Recommendation</h3>
-                    <p>Validates recommendation-style outputs with a list of recommendations and optional user context.</p>
-                </div>
-                <div class="validation-type">
-                    <h3>Summary</h3>
-                    <p>Validates text summary outputs with original text, summary, and optional key points.</p>
-                </div>
-                <div class="validation-type">
-                    <h3>Classification</h3>
-                    <p>Validates classification outputs with text, categories, and optional probabilities.</p>
-                </div>
+            
+            <div class="feature-card">
+                <div class="card-icon">🧠</div>
+                <h3>Enhanced Semantic Validation</h3>
+                <p>Go beyond structural validation with PydanticAI-powered semantic checks.</p>
+                <p>Evaluate content quality, relevance, and coherence automatically.</p>
             </div>
+            
+            <div class="feature-card">
+                <div class="card-icon">📊</div>
+                <h3>Comprehensive Reports</h3>
+                <p>Get detailed validation reports with actionable insights.</p>
+                <p>Includes specific issues, suggestions for improvement, and confidence scores.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="card-icon">🛡️</div>
+                <h3>API Key Authentication</h3>
+                <p>Secure your validation service with optional API key authentication.</p>
+                <p>Control access to validation endpoints in production environments.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="card-icon">📝</div>
+                <h3>Structured Logging</h3>
+                <p>Comprehensive logging with Logfire integration for monitoring.</p>
+                <p>Track validation performance and identify patterns in validation failures.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="card-icon">⚡</div>
+                <h3>High Performance</h3>
+                <p>Built with FastAPI for high throughput and low latency.</p>
+                <p>Asynchronous validation processing for optimal performance.</p>
+            </div>
+        </div>
+        
+        <section class="cta-section">
+            <h2>Ready to Get Started?</h2>
+            <p>Explore our API documentation to learn how to integrate the validation service into your workflow.</p>
+            <a href="/docs" class="button">View API Documentation</a>
+            <a href="https://github.com/yourusername/ai-output-validator" class="button secondary">GitHub Repository</a>
         </section>
         
-        <section>
-            <h2>API Integration Example</h2>
-            <p>Here's a simple example of how to use the validation service in your application:</p>
-            <pre>
-import requests
+        <h2 id="usage">Example Usage</h2>
+        <p>Here's how to validate an AI output using our service:</p>
+        
+        <pre><code>import requests
 
-# Your AI output data
-ai_output = {
-    "response_text": "This is a response from the AI",
-    "confidence_score": 0.92
+# Your AI output data and schema
+validation_request = {
+    "<span class="json-key">data</span>": {
+        "<span class="json-key">product_name</span>": "<span class="json-string">Smart Home Hub</span>",
+        "<span class="json-key">description</span>": "<span class="json-string">A central control device for all your smart home needs</span>",
+        "<span class="json-key">price</span>": <span class="json-number">149.99</span>,
+        "<span class="json-key">in_stock</span>": <span class="json-boolean">true</span>
+    },
+    "<span class="json-key">schema</span>": {
+        "<span class="json-key">product_name</span>": {"<span class="json-key">type</span>": "<span class="json-string">string</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
+        "<span class="json-key">description</span>": {"<span class="json-key">type</span>": "<span class="json-string">string</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
+        "<span class="json-key">price</span>": {"<span class="json-key">type</span>": "<span class="json-string">number</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
+        "<span class="json-key">in_stock</span>": {"<span class="json-key">type</span>": "<span class="json-string">boolean</span>", "<span class="json-key">required</span>": <span class="json-boolean">false</span>}
+    },
+    "<span class="json-key">type</span>": "<span class="json-string">product</span>",
+    "<span class="json-key">level</span>": "<span class="json-string">standard</span>"
 }
 
 # Send to validation service
 response = requests.post(
-    "https://dkogc88csc8kk4cg0o8s48ss.selmanayan.com/validate/generic",
-    headers={"x-api-key": "your_api_key"},
-    json=ai_output
+    "http://your-service-url/validate",
+    headers={"x-api-key": "your-secret-key"},  # Only if authentication is enabled
+    json=validation_request
 )
 
-# Check validation result
-if response.json()["status"] == "valid":
-    # Process the validated data
-    validated_data = response.json()["validated_data"]
-    print("Validation successful:", validated_data)
-else:
-    # Handle validation errors
-    errors = response.json()["errors"]
-    print("Validation failed:", errors)
-</pre>
-        </section>
-        
-        <section>
-            <h2>n8n Integration</h2>
-            <p>Easily integrate with n8n workflows to validate AI outputs before further processing:</p>
-            <ol>
-                <li>Set up an AI agent node in n8n (e.g., OpenAI)</li>
-                <li>Add an HTTP Request node:
-                    <ul>
-                        <li>Method: POST</li>
-                        <li>URL: <code>https://dkogc88csc8kk4cg0o8s48ss.selmanayan.com/validate/{validation_type}</code></li>
-                        <li>Headers: <code>x-api-key: your_api_key</code></li>
-                        <li>Body: Output from the AI agent node</li>
-                    </ul>
-                </li>
-                <li>Add a Switch node to handle the validation result:
-                    <ul>
-                        <li>Valid case: <code>{{$node["HTTP Request"].json["status"] === "valid"}}</code></li>
-                        <li>Invalid case: <code>{{$node["HTTP Request"].json["status"] === "invalid"}}</code></li>
-                    </ul>
-                </li>
-            </ol>
-        </section>
-        
-        <section style="text-align: center; margin-top: 4rem;">
-            <h2>Ready to Get Started?</h2>
-            <p style="margin-bottom: 2rem;">Check out our API documentation to start validating your AI outputs today.</p>
-            <a href="/docs" class="cta">View API Docs</a>
-        </section>
-    </main>
+# Process validation results
+result = response.json()
+print(f"Validation result: {result['is_valid']}")
+</code></pre>
+    </div>
     
     <footer>
         <div class="container">
-            <p>&copy; 2024 AI Output Validation Service</p>
+            <div class="footer-grid">
+                <div class="footer-column">
+                    <h4>Documentation</h4>
+                    <ul>
+                        <li><a href="/docs">API Reference</a></li>
+                        <li><a href="/static/guide.html">User Guide</a></li>
+                        <li><a href="/static/examples.html">Examples</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-column">
+                    <h4>API Endpoints</h4>
+                    <ul>
+                        <li><a href="/validate">/validate</a></li>
+                        <li><a href="/health">/health</a></li>
+                        <li><a href="/diagnostic">/diagnostic</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-column">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://fastapi.tiangolo.com/" target="_blank">FastAPI</a></li>
+                        <li><a href="https://docs.pydantic.dev/" target="_blank">Pydantic</a></li>
+                        <li><a href="https://ai.pydantic.dev/" target="_blank">PydanticAI</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="copyright">
+                <p>&copy; 2023 AI Output Validation Service</p>
+            </div>
         </div>
     </footer>
+    
+    <script>
+        // Update last updated timestamp
+        document.getElementById('last-updated').textContent = new Date().toLocaleString();
+        
+        // Check service status
+        async function checkStatus() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Service health check:', data);
+                } else {
+                    document.querySelector('.status-indicator').style.backgroundColor = 'var(--error-color)';
+                    document.querySelector('.status-header h3').textContent = 'Service Status: Degraded';
+                }
+            } catch (error) {
+                console.error('Error checking service status:', error);
+                document.querySelector('.status-indicator').style.backgroundColor = 'var(--error-color)';
+                document.querySelector('.status-header h3').textContent = 'Service Status: Offline';
+            }
+        }
+        
+        checkStatus();
+    </script>
 </body>
 </html> 

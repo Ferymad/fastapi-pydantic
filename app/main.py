@@ -14,7 +14,8 @@ import os
 
 from fastapi import FastAPI, Request, Response, status, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError, Field, create_model
 
 from app.config import Settings, get_settings
@@ -64,6 +65,9 @@ app = FastAPI(
     version=settings.SERVICE_VERSION,
     lifespan=lifespan,
 )
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Configure CORS
 def get_cors_origins(settings: Settings) -> List[str]:
@@ -219,14 +223,9 @@ async def diagnostic():
 @app.get("/", tags=["info"])
 async def root():
     """
-    API information endpoint
+    API information endpoint that redirects to the index page
     """
-    return {
-        "service": settings.SERVICE_NAME,
-        "version": settings.SERVICE_VERSION,
-        "description": "Enhanced validation for AI outputs with semantic checks",
-        "docs_url": "/docs",
-    }
+    return RedirectResponse(url="/static/index.html")
 
 class ValidationRequest(BaseModel):
     """Request body for validation endpoint"""
