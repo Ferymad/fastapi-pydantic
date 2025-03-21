@@ -1,0 +1,20 @@
+{
+  "data": {
+    "product_name": "Smart Home Hub",
+    "description": "A central control device for all your smart home needs",
+    "price": 149.99,
+    "category": "Electronics",
+    "in_stock": true,
+    "features": ["Voice Control", "Wi-Fi", "Bluetooth", "Mobile App"]
+  },
+  "schema": {
+    "product_name": {"type": "string", "required": true},
+    "description": {"type": "string", "required": true},
+    "price": {"type": "number", "required": true},
+    "category": {"type": "string", "required": true},
+    "in_stock": {"type": "boolean", "required": false},
+    "features": {"type": "array", "required": false}
+  },
+  "type": "product",
+  "level": "standard"
+} 

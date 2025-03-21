@@ -197,6 +197,27 @@ async def perform_semantic_validation(
     Returns:
         A SemanticValidationResult object
     """
+    # Special case for empty data/schema to provide meaningful validation
+    if not data or not schema:
+        logger.info("Empty data or schema detected, providing direct validation feedback")
+        issues = []
+        suggestions = []
+        
+        if not data:
+            issues.append("The provided data is empty")
+            suggestions.append("Provide actual content to validate")
+        
+        if not schema:
+            issues.append("The provided schema is empty")
+            suggestions.append("Define a schema with fields and validation rules")
+            
+        return SemanticValidationResult(
+            is_semantically_valid=False if issues else True,
+            semantic_score=0.0 if issues else 1.0,
+            issues=issues,
+            suggestions=suggestions
+        )
+    
     # Get the validation agent
     agent = get_validation_agent()
     
@@ -212,28 +233,19 @@ async def perform_semantic_validation(
         )
     
     try:
-        # Construct a prompt for the validation
+        # Simplified prompt for more reliable results
         prompt = f"""
-        Validate the following data against the provided schema for {validation_type} validation at {validation_level} level.
+        Validate this data against the schema for {validation_type} validation.
         
-        SCHEMA:
-        {schema}
+        SCHEMA: {schema}
         
-        DATA:
-        {data}
+        DATA: {data}
         
-        Validation Instructions:
-        1. Check if the data aligns with the schema's intent and purpose
-        2. Validate that field values make logical sense in context
-        3. Identify inconsistencies or contradictions in the data
-        4. Apply {validation_level} level of scrutiny
-        5. For empty data or schema, indicate this as a potential issue
-        
-        Respond with a SemanticValidationResult containing:
-        - is_semantically_valid: Whether the data is semantically valid
-        - semantic_score: A score from 0.0 to 1.0 representing semantic validity
-        - issues: A list of identified semantic issues
-        - suggestions: A list of suggestions to fix those issues
+        Check if the data is semantically valid and return:
+        1. is_semantically_valid (boolean)
+        2. semantic_score (float between 0-1)
+        3. issues (list of strings)
+        4. suggestions (list of strings)
         """
         
         logger.info(f"Sending prompt to PydanticAI agent for {validation_type} validation")
@@ -251,15 +263,25 @@ async def perform_semantic_validation(
                 timeout=20.0  # 20 second timeout
             )
             
-            logger.info("Successfully received response from PydanticAI agent")
+            logger.info(f"Successfully received response from PydanticAI agent: {result}")
             
-            # Ensure the result is of the correct type
+            # Ensure the result is of the correct type and has required fields
             if not isinstance(result, SemanticValidationResult):
                 logger.warning(f"Agent returned unexpected type: {type(result)}")
                 return await basic_semantic_validation(
                     validation_type, validation_level, data, schema, structural_errors
                 )
+            
+            # Ensure all required fields are present
+            if not hasattr(result, 'is_semantically_valid') or result.is_semantically_valid is None:
+                logger.warning("Agent response missing is_semantically_valid field")
+                result.is_semantically_valid = False
                 
+            if not hasattr(result, 'semantic_score') or result.semantic_score is None:
+                logger.warning("Agent response missing semantic_score field")
+                result.semantic_score = 0.0
+                
+            # Return the validated result
             return result
             
         except asyncio.TimeoutError:
