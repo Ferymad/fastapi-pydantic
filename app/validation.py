@@ -197,6 +197,16 @@ async def perform_semantic_validation(
     Returns:
         A SemanticValidationResult object
     """
+    # Ensure data and schema are valid dictionaries
+    if not isinstance(data, dict) or not isinstance(schema, dict):
+        logger.warning(f"Invalid input types - data: {type(data)}, schema: {type(schema)}")
+        return SemanticValidationResult(
+            is_semantically_valid=False,
+            semantic_score=0.0,
+            issues=["Invalid input format. Both data and schema must be valid JSON objects."],
+            suggestions=["Ensure both data and schema are valid JSON objects."]
+        )
+    
     # Special case for empty data/schema to provide direct feedback
     if not data or not schema:
         logger.info("Empty data or schema detected, providing direct validation feedback")
@@ -233,7 +243,7 @@ async def perform_semantic_validation(
         )
     
     try:
-        # Even more simplified prompt that focuses on the core task
+        # Simplified prompt focused on the core task
         prompt = f"""
         You are validating data against a schema.
         
@@ -260,13 +270,13 @@ async def perform_semantic_validation(
         # Use a synchronous approach if possible, with a timeout
         import asyncio
         try:
-            # Try with minimal parameters first - PydanticAI documentation recommends this approach
+            # Run with minimal parameters first
             result = await asyncio.wait_for(
                 agent.run(
                     user_prompt=prompt,
                     result_type=SemanticValidationResult
                 ),
-                timeout=15.0
+                timeout=10.0  # Reduced timeout for better responsiveness
             )
             
             logger.info(f"Agent returned result type: {type(result)}")

@@ -79,17 +79,23 @@ def initialize_validation_agent():
     """
     Initialize the validation agent with PydanticAI.
     
-    This should be called at application startup.
+    Returns:
+        The initialized agent or None if initialization fails
     """
     global _validation_agent
     
+    # Check if already initialized
+    if _validation_agent is not None:
+        logger.info("Agent already initialized, reusing existing instance")
+        return _validation_agent
+    
     # Only import logfire if available (it's optional)
+    has_logfire = False
     try:
         import logfire
         has_logfire = True
         logger.info("Logfire is available and will be used for monitoring")
     except ImportError:
-        has_logfire = False
         logger.info("Logfire not available, continuing without monitoring")
 
     try:
@@ -104,54 +110,32 @@ def initialize_validation_agent():
         # Set environment variable for OpenAI API key
         os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
         
-        # Initialize nest_asyncio to handle event loop conflicts
+        # Import Agent class
         try:
-            # This is essential for PydanticAI to work reliably
-            import nest_asyncio
-            nest_asyncio.apply()
-            logger.info("nest_asyncio applied successfully")
-        except Exception as e:
-            logger.warning(f"Failed to apply nest_asyncio: {str(e)}. This might affect agent functionality.")
+            from pydantic_ai import Agent
+            logger.info("Successfully imported Agent from pydantic_ai")
+        except ImportError as e:
+            logger.error(f"Failed to import Agent from pydantic_ai: {str(e)}")
+            return None
         
-        # Configure logfire if available
-        if has_logfire:
-            import logfire
-            logfire.configure(
-                service_name=settings.SERVICE_NAME,
-                service_version=settings.SERVICE_VERSION
+        # Simplest possible initialization based on docs
+        try:
+            logger.info("Initializing agent with model gpt-3.5-turbo")
+            _validation_agent = Agent(
+                model="openai:gpt-3.5-turbo"
             )
-            # Instrument pydantic for better debugging
-            try:
-                logfire.instrument_pydantic()
-                logger.info("Logfire pydantic instrumentation enabled")
-            except Exception as e:
-                logger.warning(f"Failed to instrument pydantic with logfire: {str(e)}")
-        
-        # Import Agent class - defer this to reduce initialization complexities
-        from pydantic_ai import Agent
-        
-        # Use a synchronous approach for initialization - simpler and more reliable
-        logger.info("Initializing agent with absolute minimal configuration")
-        
-        # The most minimal working configuration based on docs
-        # DO NOT add extra parameters unless absolutely necessary
-        _validation_agent = Agent(
-            model="openai:gpt-3.5-turbo",
-            # Only instrument if logfire is available
-            instrument=has_logfire
-        )
-        
-        # Simple verification that doesn't involve making API calls
-        if _validation_agent is None:
-            logger.error("Agent initialization failed, returned None")
+            # Simple verification
+            if _validation_agent is None:
+                logger.error("Agent initialization returned None")
+                return None
+                
+            logger.info(f"Agent initialized successfully: {type(_validation_agent)}")
+            return _validation_agent
+            
+        except Exception as e:
+            logger.error(f"Error during agent initialization: {str(e)}", exc_info=True)
             return None
             
-        logger.info(f"Agent initialized successfully: {type(_validation_agent)}")
-        return _validation_agent
-        
-    except ImportError as e:
-        logger.error(f"Failed to import required modules: {str(e)}")
-        return None
     except Exception as e:
         logger.error(f"Unexpected error during agent initialization: {str(e)}", exc_info=True)
         return None
@@ -238,8 +222,17 @@ def get_validation_agent():
         
     # Initialize agent on first call
     logger.info("Agent not initialized yet, initializing now")
-    _validation_agent = initialize_validation_agent()
-    return _validation_agent
+    try:
+        _validation_agent = initialize_validation_agent()
+        if _validation_agent is not None:
+            logger.info("Agent initialized successfully on first use")
+            return _validation_agent
+        else:
+            logger.error("Failed to initialize agent on first use")
+            return None
+    except Exception as e:
+        logger.error(f"Error during first-time agent initialization: {str(e)}", exc_info=True)
+        return None
 
 async def perform_semantic_validation(
     validation_type: str, 

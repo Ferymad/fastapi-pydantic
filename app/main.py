@@ -104,16 +104,20 @@ async def startup_event():
     
     # Initialize validation agent
     try:
-        logger.info("Initializing validation agent...")
-        initialize_validation_agent()
-        from app.ai_agent import get_validation_agent
-        agent = get_validation_agent()
-        if agent:
-            logger.info("Validation agent initialized successfully")
+        logger.info("Initializing validation agent on startup (optional)...")
+        # We'll just check if the API key is valid and log it,
+        # but we won't force initialization - this will happen on first use
+        if settings.OPENAI_API_KEY:
+            from app.ai_agent import verify_openai_api_key
+            key_valid = verify_openai_api_key(settings.OPENAI_API_KEY)
+            if key_valid:
+                logger.info("OpenAI API key is valid")
+            else:
+                logger.warning("OpenAI API key validation failed - semantic validation may not work")
         else:
-            logger.warning("Validation agent initialization completed but agent is not available")
+            logger.warning("No OpenAI API key provided - semantic validation will be disabled")
     except Exception as e:
-        logger.error(f"Failed to initialize validation agent: {str(e)}", exc_info=True)
+        logger.error(f"OpenAI API key validation error: {str(e)}", exc_info=True)
     
     logger.info(f"Application startup complete")
 
@@ -243,7 +247,7 @@ class ValidationRequest(BaseModel):
     tags=["validation"],
     status_code=status.HTTP_200_OK,
 )
-async def validate_ai_output(request: ValidationRequest):
+async def validate_ai_output(request: Request):
     """
     Validate AI-generated output against provided schema and perform semantic validation.
     
@@ -257,6 +261,34 @@ async def validate_ai_output(request: ValidationRequest):
     - standard: Balanced semantic validation (default)
     - strict: Thorough semantic validation with high standards
     """
+    # Handle JSON parsing first to avoid complex errors
+    try:
+        json_body = await request.json()
+    except Exception as e:
+        logger.error(f"JSON parsing error: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": [{
+                    "type": "json_invalid",
+                    "loc": ["body"],
+                    "msg": f"JSON decode error: {str(e)}",
+                    "input": {},
+                    "ctx": {"error": str(e)}
+                }]
+            }
+        )
+    
+    # Validate the request with Pydantic
+    try:
+        validation_request = ValidationRequest(**json_body)
+    except ValidationError as e:
+        logger.error(f"Validation request validation error: {str(e)}")
+        return JSONResponse(
+            status_code=422,
+            content={"detail": e.errors()}
+        )
+        
     validation_response = ValidationResponse(
         is_valid=False,
         structural_validation=StructuralValidationResult(
@@ -267,12 +299,12 @@ async def validate_ai_output(request: ValidationRequest):
     )
     
     try:
-        logger.debug(f"Validation request received - type: {request.type}, level: {request.level}")
+        logger.debug(f"Validation request received - type: {validation_request.type}, level: {validation_request.level}")
         
         # Create a dynamic Pydantic model from the schema
         start_time = time.time()
         try:
-            model_class = create_model_from_schema(request.schema)
+            model_class = create_model_from_schema(validation_request.schema)
             logger.debug("Dynamic model created successfully")
         except Exception as e:
             logger.error(f"Schema parsing error: {e}")
@@ -287,7 +319,7 @@ async def validate_ai_output(request: ValidationRequest):
         # Perform structural validation
         structural_validation_result, data = await perform_structural_validation(
             model_class=model_class,
-            data=request.data
+            data=validation_request.data
         )
         validation_response.structural_validation = structural_validation_result
         
@@ -297,14 +329,14 @@ async def validate_ai_output(request: ValidationRequest):
             return validation_response
         
         # If semantic validation is requested, perform it
-        if request.level != "structure_only":
-            logger.debug(f"Performing semantic validation at level: {request.level}")
+        if validation_request.level != "structure_only":
+            logger.debug(f"Performing semantic validation at level: {validation_request.level}")
             try:
                 semantic_validation_result = await perform_semantic_validation(
-                    validation_type=request.type,
-                    validation_level=request.level,
+                    validation_type=validation_request.type,
+                    validation_level=validation_request.level,
                     data=data,
-                    schema=request.schema,
+                    schema=validation_request.schema,
                     structural_errors=structural_validation_result.errors
                 )
                 validation_response.semantic_validation = semantic_validation_result
