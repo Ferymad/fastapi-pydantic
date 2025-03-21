@@ -83,118 +83,78 @@ def initialize_validation_agent():
     """
     global _validation_agent
     
+    # Only import logfire if available (it's optional)
     try:
-        from app.config import get_settings
+        import logfire
+        has_logfire = True
+        logger.info("Logfire is available and will be used for monitoring")
+    except ImportError:
+        has_logfire = False
+        logger.info("Logfire not available, continuing without monitoring")
+
+    try:
+        # Get settings for API key
         settings = get_settings()
         
-        # Log the API key status (masked for security)
-        if settings.OPENAI_API_KEY:
-            api_key_status = f"provided (length: {len(settings.OPENAI_API_KEY)})"
-            logger.info(f"OpenAI API key is {api_key_status}")
-        else:
+        # Validate API key presence
+        if not settings.OPENAI_API_KEY:
             logger.warning("OPENAI_API_KEY not set or empty. Semantic validation will be disabled.")
-            return
+            return None
         
-        # Set environment variable for OpenAI API key (some libraries require this)
+        # Set environment variable for OpenAI API key
         os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
         
-        # Verify OpenAI API key before attempting to initialize the agent
-        if not verify_openai_api_key(settings.OPENAI_API_KEY):
-            logger.error("OpenAI API key verification failed. Semantic validation will be disabled.")
-            return
-        
-        # Import necessary modules
-        import asyncio
-        import nest_asyncio
-        
-        # Apply nest_asyncio to allow running async code in sync context
+        # Initialize nest_asyncio to handle event loop conflicts
         try:
+            # This is essential for PydanticAI to work reliably
+            import nest_asyncio
             nest_asyncio.apply()
-        except RuntimeError as e:
-            logger.warning(f"Failed to apply nest_asyncio: {e}. Will try alternate approach if needed.")
-        
-        # Define a timeout wrapper for agent initialization
-        async def initialize_with_timeout(timeout=30.0):
-            try:
-                # Import PydanticAI
-                from pydantic_ai import Agent
-                
-                # Check PydanticAI version to determine initialization approach
-                pydantic_ai_version = importlib.metadata.version("pydantic-ai")
-                logger.info(f"Detected PydanticAI version: {pydantic_ai_version}")
-                
-                # Use an extremely reliable and widely available model
-                model_name = "gpt-3.5-turbo"  # Changed to most widely available model
-                logger.info(f"Attempting to use model: {model_name}")
-                
-                # Simplified agent initialization with minimal parameters
-                logger.info("Using simplified agent initialization pattern")
-                
-                # First attempt: standard initialization
-                params = {
-                    "model": f"openai:{model_name}",
-                    "api_key": settings.OPENAI_API_KEY,
-                    "system_prompt": "You are a validation assistant."
-                }
-                logger.info(f"Initializing agent with parameters: {str(params)}")
-                
-                try:
-                    # Create agent with explicit parameters
-                    agent = Agent(**params)
-                    
-                    if agent is None:
-                        logger.error("Agent initialization returned None despite no exceptions")
-                        return None
-                    
-                    logger.info("PydanticAI Agent initialized successfully")
-                    return agent
-                    
-                except Exception as e:
-                    logger.error(f"Failed to initialize agent: {str(e)}")
-                
-                # Second attempt: minimal initialization as last resort
-                logger.info("Attempting minimal initialization as last resort")
-                agent = Agent(api_key=settings.OPENAI_API_KEY)
-                logger.info("Minimal agent initialization succeeded")
-                return agent
-                
-            except Exception as e:
-                logger.error(f"All agent initialization attempts failed: {str(e)}", exc_info=True)
-                return None
-        
-        # Run the initialization with timeout
-        try:
-            # Get or create event loop
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            # Run the initialization task with timeout
-            try:
-                logger.info("Starting agent initialization with timeout...")
-                _validation_agent = loop.run_until_complete(
-                    asyncio.wait_for(initialize_with_timeout(), timeout=30.0)
-                )
-            except asyncio.TimeoutError:
-                logger.error("Agent initialization timed out after 30 seconds")
-                _validation_agent = None
-        
+            logger.info("nest_asyncio applied successfully")
         except Exception as e:
-            logger.error(f"Failed to run agent initialization: {str(e)}", exc_info=True)
-            _validation_agent = None
+            logger.warning(f"Failed to apply nest_asyncio: {str(e)}. This might affect agent functionality.")
         
-        logger.info("PydanticAI Agent initialization completed")
+        # Configure logfire if available
+        if has_logfire:
+            import logfire
+            logfire.configure(
+                service_name=settings.SERVICE_NAME,
+                service_version=settings.SERVICE_VERSION
+            )
+            # Instrument pydantic for better debugging
+            try:
+                logfire.instrument_pydantic()
+                logger.info("Logfire pydantic instrumentation enabled")
+            except Exception as e:
+                logger.warning(f"Failed to instrument pydantic with logfire: {str(e)}")
         
-        # Verify agent is working with simple prompt
+        # Import Agent class - defer this to reduce initialization complexities
+        from pydantic_ai import Agent
+        
+        # Use a synchronous approach for initialization - simpler and more reliable
+        logger.info("Initializing agent with absolute minimal configuration")
+        
+        # The most minimal working configuration based on docs
+        # DO NOT add extra parameters unless absolutely necessary
+        _validation_agent = Agent(
+            model="openai:gpt-3.5-turbo",
+            # Only instrument if logfire is available
+            instrument=has_logfire
+        )
+        
+        # Simple verification that doesn't involve making API calls
         if _validation_agent is None:
-            logger.error("Agent initialization appeared to succeed but returned None")
-        else:
-            verify_agent_functionality()
+            logger.error("Agent initialization failed, returned None")
+            return None
             
+        logger.info(f"Agent initialized successfully: {type(_validation_agent)}")
+        return _validation_agent
+        
+    except ImportError as e:
+        logger.error(f"Failed to import required modules: {str(e)}")
+        return None
     except Exception as e:
-        logger.error(f"Error in agent initialization process: {str(e)}", exc_info=True)
+        logger.error(f"Unexpected error during agent initialization: {str(e)}", exc_info=True)
+        return None
 
 def verify_openai_api_key(api_key: str) -> bool:
     """
@@ -265,9 +225,20 @@ def get_validation_agent():
     """
     Get the singleton validation agent instance.
     
+    Initializes the agent on first call if not already initialized.
+    
     Returns:
-        The initialized validation agent or None if not initialized
+        The initialized validation agent or None if initialization fails
     """
+    global _validation_agent
+    
+    # If agent is already initialized, return it
+    if _validation_agent is not None:
+        return _validation_agent
+        
+    # Initialize agent on first call
+    logger.info("Agent not initialized yet, initializing now")
+    _validation_agent = initialize_validation_agent()
     return _validation_agent
 
 async def perform_semantic_validation(
