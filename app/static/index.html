@@ -373,24 +373,25 @@
         <h2 id="usage">Example Usage</h2>
         <p>Here's how to validate an AI output using our service:</p>
         
-        <pre><code>import requests
+        <pre style="position: relative; padding: 1.5rem; border-radius: 8px; background-color: #282c34; color: #abb2bf; overflow-x: auto; font-family: 'Fira Code', 'Courier New', monospace; line-height: 1.5; font-size: 14px; margin-bottom: 1.5rem;">
+<code>import requests
 
 # Your AI output data and schema
 validation_request = {
-    "<span class="json-key">data</span>": {
-        "<span class="json-key">product_name</span>": "<span class="json-string">Smart Home Hub</span>",
-        "<span class="json-key">description</span>": "<span class="json-string">A central control device for all your smart home needs</span>",
-        "<span class="json-key">price</span>": <span class="json-number">149.99</span>,
-        "<span class="json-key">in_stock</span>": <span class="json-boolean">true</span>
+    <span style="color: #e06c75;">"data"</span>: {
+        <span style="color: #e06c75;">"product_name"</span>: <span style="color: #98c379;">"Smart Home Hub"</span>,
+        <span style="color: #e06c75;">"description"</span>: <span style="color: #98c379;">"A central control device for all your smart home needs"</span>,
+        <span style="color: #e06c75;">"price"</span>: <span style="color: #d19a66;">149.99</span>,
+        <span style="color: #e06c75;">"in_stock"</span>: <span style="color: #c678dd;">true</span>
     },
-    "<span class="json-key">schema</span>": {
-        "<span class="json-key">product_name</span>": {"<span class="json-key">type</span>": "<span class="json-string">string</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
-        "<span class="json-key">description</span>": {"<span class="json-key">type</span>": "<span class="json-string">string</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
-        "<span class="json-key">price</span>": {"<span class="json-key">type</span>": "<span class="json-string">number</span>", "<span class="json-key">required</span>": <span class="json-boolean">true</span>},
-        "<span class="json-key">in_stock</span>": {"<span class="json-key">type</span>": "<span class="json-string">boolean</span>", "<span class="json-key">required</span>": <span class="json-boolean">false</span>}
+    <span style="color: #e06c75;">"schema"</span>: {
+        <span style="color: #e06c75;">"product_name"</span>: {<span style="color: #e06c75;">"type"</span>: <span style="color: #98c379;">"string"</span>, <span style="color: #e06c75;">"required"</span>: <span style="color: #c678dd;">true</span>},
+        <span style="color: #e06c75;">"description"</span>: {<span style="color: #e06c75;">"type"</span>: <span style="color: #98c379;">"string"</span>, <span style="color: #e06c75;">"required"</span>: <span style="color: #c678dd;">true</span>},
+        <span style="color: #e06c75;">"price"</span>: {<span style="color: #e06c75;">"type"</span>: <span style="color: #98c379;">"number"</span>, <span style="color: #e06c75;">"required"</span>: <span style="color: #c678dd;">true</span>},
+        <span style="color: #e06c75;">"in_stock"</span>: {<span style="color: #e06c75;">"type"</span>: <span style="color: #98c379;">"boolean"</span>, <span style="color: #e06c75;">"required"</span>: <span style="color: #c678dd;">false</span>}
     },
-    "<span class="json-key">type</span>": "<span class="json-string">product</span>",
-    "<span class="json-key">level</span>": "<span class="json-string">standard</span>"
+    <span style="color: #e06c75;">"type"</span>: <span style="color: #98c379;">"product"</span>,
+    <span style="color: #e06c75;">"level"</span>: <span style="color: #98c379;">"standard"</span>
 }
 
 # Send to validation service
@@ -403,6 +404,23 @@ response = requests.post(
 # Process validation results
 result = response.json()
 print(f"Validation result: {result['is_valid']}")
+</code></pre>
+
+        <h3>Example Response</h3>
+        <pre style="position: relative; padding: 1.5rem; border-radius: 8px; background-color: #282c34; color: #abb2bf; overflow-x: auto; font-family: 'Fira Code', 'Courier New', monospace; line-height: 1.5; font-size: 14px; margin-bottom: 1.5rem;">
+<code>{
+    <span style="color: #e06c75;">"is_valid"</span>: <span style="color: #c678dd;">true</span>,
+    <span style="color: #e06c75;">"structural_validation"</span>: {
+        <span style="color: #e06c75;">"is_structurally_valid"</span>: <span style="color: #c678dd;">true</span>,
+        <span style="color: #e06c75;">"errors"</span>: []
+    },
+    <span style="color: #e06c75;">"semantic_validation"</span>: {
+        <span style="color: #e06c75;">"is_semantically_valid"</span>: <span style="color: #c678dd;">true</span>,
+        <span style="color: #e06c75;">"semantic_score"</span>: <span style="color: #d19a66;">0.95</span>,
+        <span style="color: #e06c75;">"issues"</span>: [],
+        <span style="color: #e06c75;">"suggestions"</span>: []
+    }
+}
 </code></pre>
     </div>
     
