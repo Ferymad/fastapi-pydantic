@@ -1,8 +1,10 @@
 fastapi>=0.100.0
 pydantic>=2.0.0
+pydantic[email]>=2.0.0
 uvicorn>=0.22.0
-pydantic-ai==0.0.30
+pydantic-ai==0.0.42
 logfire>=0.15.0
 python-dotenv>=1.0.0
 requests>=2.30.0
-nest_asyncio>=1.5.6 
+nest_asyncio>=1.5.6
+email-validator>=2.0.0 

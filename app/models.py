@@ -24,6 +24,9 @@ class StructuralValidationResult(BaseModel):
     errors: List[Dict[str, Any]] = Field(
         default_factory=list, description="List of structural validation errors"
     )
+    suggestions: List[str] = Field(
+        default_factory=list, description="Suggestions for fixing issues"
+    )
 
 class SemanticValidationResult(BaseModel):
     """Result of semantic validation using PydanticAI."""

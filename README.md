@@ -19,6 +19,9 @@ A lightweight validation service built with FastAPI and Pydantic v2 to validate 
 - ✅ Implemented lazy loading of validation agent for better resource usage
 - ✅ Enhanced error handling with proper fallbacks
 - ✅ Improved web interface with real-time status monitoring
+- ✅ Added format validation (email, date, phone numbers) with helpful suggestions
+- ✅ Implemented intelligent schema enrichment for common field patterns
+- ✅ Added new test endpoint for easier validation debugging
 
 ## Getting Started
 
@@ -122,14 +125,37 @@ The validation endpoint accepts a JSON body with the following fields:
 - `type`: Type of validation to perform (generic, recommendation, summary, etc.)
 - `level`: Level of semantic validation (basic, standard, strict)
 
+#### Enhanced Schema Format
+
+The service now supports rich schema definitions including:
+
+```json
+{
+  "email": {"type": "string", "required": true, "format": "email"},
+  "order_date": {"type": "string", "required": true, "format": "date"},
+  "phone_number": {"type": "string", "required": true, "pattern": "^\\d{10}$"},
+  "description": {"type": "string", "required": true, "min_length": 20, "max_length": 500},
+  "quantity": {"type": "integer", "required": true, "min": 1, "max": 100}
+}
+```
+
+Supported schema attributes:
+- `format`: Validate common formats like email, date, etc.
+- `pattern`: Use regex patterns for custom validation rules
+- `min_length`/`max_length`: Enforce string or array length constraints
+- `min`/`max`: Set numerical value ranges
+
 ### Validation Response Format
+
+The validation endpoint returns a detailed JSON response:
 
 ```json
 {
   "is_valid": true,
   "structural_validation": {
     "is_structurally_valid": true,
-    "errors": []
+    "errors": [],
+    "suggestions": []
   },
   "semantic_validation": {
     "is_semantically_valid": true,
@@ -137,6 +163,27 @@ The validation endpoint accepts a JSON body with the following fields:
     "issues": [],
     "suggestions": []
   }
+}
+```
+
+When validation errors occur, the response provides detailed feedback:
+
+```json
+{
+  "is_valid": false,
+  "structural_validation": {
+    "is_structurally_valid": false,
+    "errors": [
+      {
+        "loc": "email",
+        "type": "value_error.email",
+        "msg": "value is not a valid email address",
+        "suggestion": "email must be a valid email address format (e.g., user@example.com)"
+      }
+    ],
+    "suggestions": ["Fix the email format to proceed with semantic validation"]
+  },
+  "semantic_validation": null
 }
 ```
 

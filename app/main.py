@@ -259,6 +259,22 @@ async def validate_ai_output(request: Request):
     - basic: Minimal semantic checks
     - standard: Balanced semantic validation (default)
     - strict: Thorough semantic validation with high standards
+    
+    Schema Format Support:
+    - You can specify field formats using the 'format' attribute (e.g., "format": "email")
+    - Supported formats: email, date, url, etc.
+    - You can provide regex patterns with the 'pattern' attribute
+    - You can specify min_length, max_length for strings and arrays
+    - You can specify min, max for numbers and integers
+    
+    Example Schema with Format Validation:
+    ```json
+    {
+      "email": {"type": "string", "required": true, "format": "email"},
+      "date": {"type": "string", "required": true, "format": "date"},
+      "phone": {"type": "string", "required": true, "pattern": "^\\d{10}$"}
+    }
+    ```
     """
     # Handle JSON parsing first to avoid complex errors
     try:
@@ -300,10 +316,37 @@ async def validate_ai_output(request: Request):
     try:
         logger.debug(f"Validation request received - type: {validation_request.type}, level: {validation_request.level}")
         
+        # Enrich schema with format information if missing
+        enriched_schema = validation_request.schema.copy()
+        type_format_enrichment = {}
+        
+        # Common enrichment patterns based on field names
+        if validation_request.type == "order" or validation_request.type == "user" or validation_request.type == "personal":
+            type_format_enrichment = {
+                "email": {"format": "email"},
+                "birth_date": {"format": "date"},
+                "date_of_birth": {"format": "date"},
+                "order_date": {"format": "date"}, 
+                "registration_date": {"format": "date"},
+                "phone": {"pattern": r"^\d{10}$"},
+                "phone_number": {"pattern": r"^\d{10}$"},
+                "contact_phone": {"pattern": r"^\d{10}$"},
+                "zipcode": {"pattern": r"^\d{5}(-\d{4})?$"},
+                "postal_code": {"pattern": r"^\d{5}(-\d{4})?$"}
+            }
+            
+            # Apply enrichment where applicable
+            for field_name, field_def in enriched_schema.items():
+                if field_name in type_format_enrichment and field_def.get("type") == "string":
+                    # Only add format if not already specified
+                    for key, value in type_format_enrichment[field_name].items():
+                        if key not in field_def:
+                            field_def[key] = value
+        
         # Create a dynamic Pydantic model from the schema
         start_time = time.time()
         try:
-            model_class = create_model_from_schema(validation_request.schema)
+            model_class = create_model_from_schema(enriched_schema)
             logger.debug("Dynamic model created successfully")
         except Exception as e:
             logger.error(f"Schema parsing error: {e}")
@@ -324,6 +367,22 @@ async def validate_ai_output(request: Request):
         
         if not structural_validation_result.is_structurally_valid:
             logger.info(f"Structural validation failed with {len(structural_validation_result.errors)} errors")
+            
+            # Enhance error messages for common validation failures
+            for error in validation_response.structural_validation.errors:
+                if error["type"] == "string_type":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be a string"
+                elif error["type"] == "float_parsing":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be a valid number, not a string"
+                elif error["type"] == "list_type":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be an array/list, not a string"
+                elif error["type"] == "value_error.email":
+                    error["suggestion"] = f"'{error['loc']}' must be a valid email address format (e.g., user@example.com)"
+                elif "date" in error["type"]:
+                    error["suggestion"] = f"'{error['loc']}' must be in YYYY-MM-DD format (e.g., 2023-10-15)"
+                elif "pattern" in error["type"]:
+                    error["suggestion"] = f"'{error['loc']}' does not match the required pattern"
+                
             validation_response.is_valid = False
             return validation_response
         
@@ -335,7 +394,7 @@ async def validate_ai_output(request: Request):
                     validation_type=validation_request.type,
                     validation_level=validation_request.level,
                     data=data,
-                    schema=validation_request.schema,
+                    schema=enriched_schema,  # Use enriched schema for semantic validation
                     structural_errors=structural_validation_result.errors
                 )
                 validation_response.semantic_validation = semantic_validation_result
@@ -375,4 +434,206 @@ async def validate_ai_output(request: Request):
             }
         )
     
+    return validation_response
+
+@app.post("/test-validation", response_model=ValidationResponse, tags=["validation"])
+async def test_validation(
+    request: ValidationRequest,
+    auth_header: Optional[str] = Header(None, alias="X-API-Key"),
+) -> ValidationResponse:
+    """
+    Validate AI output directly using a ValidationRequest model.
+    
+    This endpoint is designed for testing validation and debugging validation issues.
+    It accepts a ValidationRequest body with data, schema, validation type and level.
+    
+    - **data**: The AI output to validate as JSON object
+    - **schema**: Schema definition with type information and constraints
+    - **type**: The type of content being validated (e.g., "product", "order", "user")
+    - **level**: Validation level (basic, standard, strict)
+    
+    The endpoint supports enhanced schema definition with:
+    - Format validation (email, date)
+    - Pattern validation (regex)
+    - Length constraints (min_length, max_length)
+    - Value constraints (min, max)
+    
+    Returns a ValidationResponse with detailed structural and semantic validation results.
+    """
+    # Initialize validation response with invalid status
+    validation_response = ValidationResponse(
+        is_valid=False,
+        structural_validation=StructuralValidationResult(
+            is_structurally_valid=False,
+            errors=[],
+            suggestions=[],
+        ),
+        semantic_validation=None,
+    )
+    
+    try:
+        logger.debug(f"Test validation request received - type: {request.type}, level: {request.level}")
+        
+        # Enrich schema with format information if missing
+        enriched_schema = request.schema.copy()
+        type_format_enrichment = {}
+        
+        # Common enrichment patterns based on field names
+        if request.type == "order" or request.type == "user" or request.type == "personal":
+            type_format_enrichment = {
+                "email": {"format": "email"},
+                "birth_date": {"format": "date"},
+                "date_of_birth": {"format": "date"},
+                "order_date": {"format": "date"}, 
+                "registration_date": {"format": "date"},
+                "phone": {"pattern": r"^\d{10}$"},
+                "phone_number": {"pattern": r"^\d{10}$"},
+                "contact_phone": {"pattern": r"^\d{10}$"},
+                "zipcode": {"pattern": r"^\d{5}(-\d{4})?$"},
+                "postal_code": {"pattern": r"^\d{5}(-\d{4})?$"}
+            }
+            
+            # Apply enrichment where applicable
+            for field_name, field_def in enriched_schema.items():
+                if field_name in type_format_enrichment and field_def.get("type") == "string":
+                    # Only add format if not already specified
+                    for key, value in type_format_enrichment[field_name].items():
+                        if key not in field_def:
+                            field_def[key] = value
+        
+        # Create a dynamic Pydantic model from the schema
+        start_time = time.time()
+        try:
+            model_class = create_model_from_schema(enriched_schema)
+            logger.debug("Dynamic model created successfully")
+        except Exception as e:
+            logger.error(f"Schema parsing error: {e}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": f"Invalid schema: {str(e)}",
+                    "is_valid": False
+                }
+            )
+        
+        # Perform structural validation
+        structural_validation_result, data = await perform_structural_validation(
+            model_class=model_class,
+            data=request.data
+        )
+        validation_response.structural_validation = structural_validation_result
+        
+        if not structural_validation_result.is_structurally_valid:
+            logger.info(f"Structural validation failed with {len(structural_validation_result.errors)} errors")
+            
+            # Enhance error messages for common validation failures
+            for error in validation_response.structural_validation.errors:
+                if error["type"] == "string_type":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be a string"
+                elif error["type"] == "float_parsing":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be a valid number, not a string"
+                elif error["type"] == "list_type":
+                    error["suggestion"] = f"The value for '{error['loc']}' must be an array/list, not a string"
+                elif error["type"] == "value_error.email":
+                    error["suggestion"] = f"'{error['loc']}' must be a valid email address format (e.g., user@example.com)"
+                elif "date" in error["type"]:
+                    error["suggestion"] = f"'{error['loc']}' must be in YYYY-MM-DD format (e.g., 2023-10-15)"
+                elif "pattern" in error["type"]:
+                    error["suggestion"] = f"'{error['loc']}' does not match the required pattern"
+                
+            validation_response.is_valid = False
+            return validation_response
+        
+        # Always perform semantic validation for test endpoint
+        logger.debug(f"Performing semantic validation at level: {request.level}")
+        try:
+            semantic_validation_result = await perform_semantic_validation(
+                validation_type=request.type,
+                validation_level=request.level,
+                data=data,
+                schema=enriched_schema,  # Use enriched schema for semantic validation
+                structural_errors=structural_validation_result.errors
+            )
+            validation_response.semantic_validation = semantic_validation_result
+            validation_response.is_valid = (
+                structural_validation_result.is_structurally_valid and 
+                semantic_validation_result.is_semantically_valid
+            )
+            
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"Validation completed in {elapsed_time:.2f}s - "
+                f"structural: {structural_validation_result.is_structurally_valid}, "
+                f"semantic: {semantic_validation_result.is_semantically_valid}"
+            )
+        except Exception as e:
+            logger.error(f"Semantic validation error: {e}", exc_info=True)
+            validation_response.semantic_validation = SemanticValidationResult(
+                is_semantically_valid=False,
+                semantic_score=0.0,
+                issues=[f"Error during semantic validation: {str(e)}"],
+                suggestions=["Try a different validation level or check the system configuration."]
+            )
+            validation_response.is_valid = False
+    
+    except Exception as e:
+        logger.error(f"Unexpected error during validation: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Validation service error: {str(e)}",
+                "is_valid": False
+            }
+        )
+    
     return validation_response 
+
+@app.get("/v1/capabilities", tags=["info"])
+async def validation_capabilities():
+    """
+    Get information about the validation capabilities of the service.
+    
+    Returns details about:
+    - Supported schema formats
+    - Validation constraints
+    - Available validation types and levels
+    """
+    return {
+        "version": "1.2.0",
+        "supported_formats": {
+            "string": ["email", "date", "uri", "regex"],
+            "number": ["min", "max"],
+            "integer": ["min", "max"],
+            "array": ["min_items", "max_items"],
+            "object": ["required_properties"]
+        },
+        "validation_types": ["generic", "product", "order", "user", "article", "recommendation", "summary"],
+        "validation_levels": ["basic", "standard", "strict"],
+        "schema_constraints": {
+            "string": {
+                "format": "Validates specific formats (email, date)",
+                "pattern": "Regular expression pattern for validation",
+                "min_length": "Minimum string length",
+                "max_length": "Maximum string length"
+            },
+            "number/integer": {
+                "min": "Minimum allowed value",
+                "max": "Maximum allowed value"
+            },
+            "array": {
+                "min_items": "Minimum number of items",
+                "max_items": "Maximum number of items"
+            }
+        },
+        "examples": {
+            "email_validation": {
+                "email": {"type": "string", "required": True, "format": "email"}
+            },
+            "date_validation": {
+                "date": {"type": "string", "required": True, "format": "date"}
+            },
+            "regex_validation": {
+                "phone": {"type": "string", "required": True, "pattern": "^\\d{10}$"}
+            }
+        }
+    } 

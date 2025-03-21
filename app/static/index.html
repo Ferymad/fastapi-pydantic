@@ -334,52 +334,35 @@
             <p><strong>Last Updated:</strong> <span id="last-updated"></span></p>
         </section>
         
-        <h2 id="features">Features</h2>
-        <p>Our AI Output Validation Service provides reliable validation for AI-generated content, ensuring both structural and semantic validity.</p>
-        
-        <div class="feature-grid">
-            <div class="feature-card">
-                <div class="card-icon">🔍</div>
-                <h3>Dynamic Schema Validation</h3>
-                <p>Validate outputs against custom schemas defined on-the-fly.</p>
-                <p>Our service uses Pydantic v2 to ensure type safety and structural validity of your AI outputs.</p>
+        <section id="features" class="container section">
+            <h2>Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>Dynamic Schema Validation</h3>
+                    <p>Validate AI outputs against custom JSON schemas with support for required fields, types, and value constraints.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Format Validation</h3>
+                    <p>Built-in validation for common formats including email, date, phone numbers, and custom regex patterns.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Enhanced Semantic Validation</h3>
+                    <p>PydanticAI integration offers content-aware validation beyond basic structure checks.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Comprehensive Reports</h3>
+                    <p>Detailed validation reports with error locations and actionable suggestions for improvement.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>API Key Authentication</h3>
+                    <p>Optional API key protection for controlled access to validation endpoints.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>High Performance</h3>
+                    <p>Optimized for speed with async processing and efficient validation pipelines.</p>
+                </div>
             </div>
-            
-            <div class="feature-card">
-                <div class="card-icon">🧠</div>
-                <h3>Enhanced Semantic Validation</h3>
-                <p>Go beyond structural validation with PydanticAI-powered semantic checks.</p>
-                <p>Evaluate content quality, relevance, and coherence automatically.</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="card-icon">📊</div>
-                <h3>Comprehensive Reports</h3>
-                <p>Get detailed validation reports with actionable insights.</p>
-                <p>Includes specific issues, suggestions for improvement, and confidence scores.</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="card-icon">🛡️</div>
-                <h3>API Key Authentication</h3>
-                <p>Secure your validation service with optional API key authentication.</p>
-                <p>Control access to validation endpoints in production environments.</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="card-icon">📝</div>
-                <h3>Structured Logging</h3>
-                <p>Comprehensive logging with Logfire integration for monitoring.</p>
-                <p>Track validation performance and identify patterns in validation failures.</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="card-icon">⚡</div>
-                <h3>High Performance</h3>
-                <p>Built with FastAPI for high throughput and low latency.</p>
-                <p>Asynchronous validation processing for optimal performance.</p>
-            </div>
-        </div>
+        </section>
         
         <section class="cta-section">
             <h2>Ready to Get Started?</h2>
@@ -388,55 +371,117 @@
             <a href="https://github.com/yourusername/ai-output-validator" class="button secondary">GitHub Repository</a>
         </section>
         
-        <h2 id="usage">Example Usage</h2>
-        <p>Here's how to validate an AI output using our service:</p>
-        
-        <pre class="code-block"><code>import requests
-
-# Your AI output data and schema
-validation_request = {
-    <span class="key">"data"</span>: {
-        <span class="key">"product_name"</span>: <span class="string">"Smart Home Hub"</span>,
-        <span class="key">"description"</span>: <span class="string">"A central control device for all your smart home needs"</span>,
-        <span class="key">"price"</span>: <span class="number">149.99</span>,
-        <span class="key">"in_stock"</span>: <span class="boolean">true</span>
+        <section id="usage" class="container section">
+            <h2>Example Usage</h2>
+            <div class="code-container">
+                <pre class="code-block"><code class="language-json">// Request
+fetch('/api/v1/validate', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-API-Key': 'your-api-key' // Optional
+  },
+  body: JSON.stringify({
+    "data": {
+      "user": {
+        "email": "john.doe@example.com",
+        "name": "John Doe",
+        "birth_date": "1990-01-15",
+        "phone": "1234567890"
+      },
+      "order": {
+        "items": [
+          { "id": "prod-001", "quantity": 2, "price": 29.99 },
+          { "id": "prod-002", "quantity": 1, "price": 49.99 }
+        ],
+        "total": 109.97
+      }
     },
-    <span class="key">"schema"</span>: {
-        <span class="key">"product_name"</span>: {<span class="key">"type"</span>: <span class="string">"string"</span>, <span class="key">"required"</span>: <span class="boolean">true</span>},
-        <span class="key">"description"</span>: {<span class="key">"type"</span>: <span class="string">"string"</span>, <span class="key">"required"</span>: <span class="boolean">true</span>},
-        <span class="key">"price"</span>: {<span class="key">"type"</span>: <span class="string">"number"</span>, <span class="key">"required"</span>: <span class="boolean">true</span>},
-        <span class="key">"in_stock"</span>: {<span class="key">"type"</span>: <span class="string">"boolean"</span>, <span class="key">"required"</span>: <span class="boolean">false</span>}
+    "schema": {
+      "user": {
+        "type": "object",
+        "required": true,
+        "properties": {
+          "email": {"type": "string", "required": true, "format": "email"},
+          "name": {"type": "string", "required": true, "min_length": 3},
+          "birth_date": {"type": "string", "required": true, "format": "date"},
+          "phone": {"type": "string", "required": true, "pattern": "^\\d{10}$"}
+        }
+      },
+      "order": {
+        "type": "object",
+        "required": true,
+        "properties": {
+          "items": {
+            "type": "array",
+            "required": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string", "required": true},
+                "quantity": {"type": "integer", "required": true, "min": 1},
+                "price": {"type": "number", "required": true, "min": 0}
+              }
+            }
+          },
+          "total": {"type": "number", "required": true, "min": 0}
+        }
+      }
     },
-    <span class="key">"type"</span>: <span class="string">"product"</span>,
-    <span class="key">"level"</span>: <span class="string">"standard"</span>
+    "type": "order",
+    "level": "standard"
+  })
+})</code></pre>
+            </div>
+            
+            <div class="code-container" style="margin-top: 20px;">
+                <h3>Example Response</h3>
+                <pre class="code-block"><code class="language-json">// Response
+{
+  "is_valid": true,
+  "structural_validation": {
+    "is_structurally_valid": true,
+    "errors": [],
+    "suggestions": []
+  },
+  "semantic_validation": {
+    "is_semantically_valid": true,
+    "semantic_score": 0.98,
+    "issues": [],
+    "suggestions": [
+      "The order total calculation is correct (109.97)."
+    ]
+  }
 }
 
-# Send to validation service
-response = requests.post(
-    <span class="string">"http://your-service-url/validate"</span>,
-    headers={<span class="string">"x-api-key"</span>: <span class="string">"your-secret-key"</span>},  <span class="comment"># Only if authentication is enabled</span>
-    json=validation_request
-)
-
-# Process validation results
-result = response.json()
-print(f"Validation result: {result['is_valid']}")
-</code></pre>
-
-        <h3>Example Response</h3>
-        <pre class="code-block"><code>{
-    <span class="key">"is_valid"</span>: <span class="boolean">true</span>,
-    <span class="key">"structural_validation"</span>: {
-        <span class="key">"is_structurally_valid"</span>: <span class="boolean">true</span>,
-        <span class="key">"errors"</span>: []
-    },
-    <span class="key">"semantic_validation"</span>: {
-        <span class="key">"is_semantically_valid"</span>: <span class="boolean">true</span>,
-        <span class="key">"semantic_score"</span>: <span class="number">0.95</span>,
-        <span class="key">"issues"</span>: [],
-        <span class="key">"suggestions"</span>: []
-    }
+// Response with validation errors
+{
+  "is_valid": false,
+  "structural_validation": {
+    "is_structurally_valid": false,
+    "errors": [
+      {
+        "loc": ["user", "email"],
+        "type": "value_error.email",
+        "msg": "value is not a valid email address",
+        "suggestion": "Email must be in valid format like 'user@example.com'"
+      },
+      {
+        "loc": ["user", "birth_date"],
+        "type": "value_error.date",
+        "msg": "invalid date format",
+        "suggestion": "Date must be in YYYY-MM-DD format"
+      }
+    ],
+    "suggestions": [
+      "Fix the email format error",
+      "Ensure birth_date is in YYYY-MM-DD format"
+    ]
+  },
+  "semantic_validation": null
 }</code></pre>
+            </div>
+        </section>
     </div>
     
     <footer>

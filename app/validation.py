@@ -5,9 +5,11 @@ This module provides functions for both structural and semantic validation
 of AI outputs against predefined schemas.
 """
 
-from typing import Dict, Any, List, Tuple, Type, Optional
+from typing import Dict, Any, List, Tuple, Type, Optional, Annotated
 import logging
-from pydantic import BaseModel, ValidationError, create_model
+import re
+from datetime import datetime
+from pydantic import BaseModel, ValidationError, create_model, Field, EmailStr, field_validator, AfterValidator, BeforeValidator
 
 from app.models import StructuralValidationResult, SemanticValidationResult
 from app.ai_agent import get_validation_agent
@@ -29,34 +31,136 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
     """
     try:
         field_definitions = {}
+        validators = {}
         
         for field_name, field_def in schema.items():
-            # Extract field type and required status
+            # Extract field type, required status and other validation rules
             field_type = field_def.get("type", Any)
             is_required = field_def.get("required", False)
+            format_type = field_def.get("format", None)
+            pattern = field_def.get("pattern", None)
+            min_length = field_def.get("min_length", None)
+            max_length = field_def.get("max_length", None)
+            min_value = field_def.get("min", None)
+            max_value = field_def.get("max", None)
+            
+            field_args = {}
+            
+            # Define type and validation constraints
+            base_type = None
             
             # Map schema types to Python types
             if field_type == "string":
-                py_type = str
+                # Handle specific string formats
+                if format_type == "email":
+                    base_type = EmailStr
+                elif format_type == "date":
+                    # Use str but add date validation
+                    base_type = str
+                    # Add validator function to check date format
+                    validator_name = f"validate_{field_name}_date"
+                    
+                    def create_date_validator(field: str):
+                        def validate_date(v):
+                            if not v:
+                                return v
+                            try:
+                                # Adjust the format based on your needs
+                                datetime.strptime(v, "%Y-%m-%d")
+                                return v
+                            except ValueError:
+                                raise ValueError(f"{field} must be a valid date in YYYY-MM-DD format")
+                        return validate_date
+                    
+                    validators[validator_name] = field_validator(field_name, mode='before')(create_date_validator(field_name))
+                else:
+                    base_type = str
+                    
+                    # Add string-specific validations
+                    if min_length is not None:
+                        field_args["min_length"] = min_length
+                    if max_length is not None:
+                        field_args["max_length"] = max_length
+                    if pattern is not None:
+                        # Create regex pattern validator
+                        validator_name = f"validate_{field_name}_pattern"
+                        
+                        def create_pattern_validator(field: str, pattern: str):
+                            def validate_pattern(v):
+                                if not v:
+                                    return v
+                                if not re.match(pattern, v):
+                                    raise ValueError(f"{field} must match pattern {pattern}")
+                                return v
+                            return validate_pattern
+                        
+                        validators[validator_name] = field_validator(field_name, mode='before')(create_pattern_validator(field_name, pattern))
+                
             elif field_type == "number":
-                py_type = float
+                base_type = float
+                if min_value is not None:
+                    field_args["ge"] = float(min_value)
+                if max_value is not None:
+                    field_args["le"] = float(max_value)
+                    
             elif field_type == "integer":
-                py_type = int
+                base_type = int
+                if min_value is not None:
+                    field_args["ge"] = int(min_value)
+                if max_value is not None:
+                    field_args["le"] = int(max_value)
+                    
             elif field_type == "boolean":
-                py_type = bool
+                base_type = bool
+                
             elif field_type == "array":
-                py_type = List[Any]
+                # Add array validations (min_items, max_items)
+                min_items = field_def.get("min_items", None)
+                max_items = field_def.get("max_items", None)
+                item_type = field_def.get("items", {}).get("type", "any")
+                
+                if item_type == "string":
+                    base_type = List[str]
+                elif item_type == "number":
+                    base_type = List[float]
+                elif item_type == "integer":
+                    base_type = List[int]
+                elif item_type == "boolean":
+                    base_type = List[bool]
+                else:
+                    base_type = List[Any]
+                    
+                if min_items is not None:
+                    field_args["min_length"] = min_items
+                if max_items is not None:
+                    field_args["max_length"] = max_items
+                    
             elif field_type == "object":
-                py_type = Dict[str, Any]
+                base_type = Dict[str, Any]
             else:
-                py_type = Any
+                base_type = Any
                 
             # Set default as ... for required fields, None for optional
-            default = ... if is_required else None
-            field_definitions[field_name] = (py_type, default)
+            field_args["default"] = ... if is_required else None
+            
+            # Add description if available
+            if "description" in field_def:
+                field_args["description"] = field_def["description"]
+                
+            # Create a Field with all the validations
+            if field_args or format_type or pattern:
+                field_definitions[field_name] = (base_type, Field(**field_args))
+            else:
+                field_definitions[field_name] = (base_type, field_args["default"])
         
         # Create the dynamic model
-        return create_model("DynamicModel", **field_definitions)
+        model = create_model("DynamicModel", **field_definitions)
+        
+        # Add validators dynamically
+        for validator_name, validator_func in validators.items():
+            setattr(model, validator_name, validator_func)
+            
+        return model
     
     except Exception as e:
         logger.error(f"Failed to create model from schema: {e}")
@@ -153,7 +257,45 @@ async def basic_semantic_validation(
             issues.append(f"Required field '{field}' is missing")
             suggestions.append(f"Add the required field '{field}'")
     
-    # Basic checks based on validation type
+    # Check for format issues based on field names
+    import re
+    from datetime import datetime
+    
+    for field_name, value in data.items():
+        field_def = schema.get(field_name, {})
+        
+        # Email validation for fields that typically contain emails
+        if (field_name in ["email", "email_address"] or 
+            field_def.get("format") == "email") and isinstance(value, str):
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, value):
+                issues.append(f"Field '{field_name}' is not a valid email address")
+                suggestions.append(f"Provide a valid email address for '{field_name}' (e.g., user@example.com)")
+        
+        # Date validation for fields that typically contain dates
+        if (field_name in ["date", "birthday", "birth_date", "order_date", "publication_date"] or 
+            field_def.get("format") == "date") and isinstance(value, str):
+            date_pattern = r'^\d{4}-\d{2}-\d{2}$'
+            if not re.match(date_pattern, value):
+                issues.append(f"Field '{field_name}' is not in a valid date format")
+                suggestions.append(f"Use YYYY-MM-DD format for '{field_name}' (e.g., 2023-10-15)")
+            else:
+                # Validate the date is valid (e.g., not 2023-13-45)
+                try:
+                    datetime.strptime(value, "%Y-%m-%d")
+                except ValueError:
+                    issues.append(f"Field '{field_name}' contains an invalid date")
+                    suggestions.append(f"Provide a valid date for '{field_name}' (e.g., 2023-10-15)")
+        
+        # Phone number validation for fields that typically contain phone numbers
+        if (field_name in ["phone", "phone_number", "contact_phone", "telephone", "mobile"] or 
+            (field_def.get("pattern") and "\\d" in field_def.get("pattern", ""))) and isinstance(value, str):
+            # Simple check for numeric-only content with reasonable length
+            if not re.match(r'^\d{7,15}$', re.sub(r'[^0-9]', '', value)):
+                issues.append(f"Field '{field_name}' does not appear to be a valid phone number")
+                suggestions.append(f"Provide a valid phone number for '{field_name}'")
+    
+    # Content quality checks based on validation type
     if validation_type == "recommendation":
         if "recommendation_text" in data and len(data.get("recommendation_text", "")) < 20:
             issues.append("Recommendation text is too short")
