@@ -227,20 +227,56 @@ async def perform_semantic_validation(
         2. Validate that field values make logical sense in context
         3. Identify inconsistencies or contradictions in the data
         4. Apply {validation_level} level of scrutiny
+        5. For empty data or schema, indicate this as a potential issue
+        
+        Respond with a SemanticValidationResult containing:
+        - is_semantically_valid: Whether the data is semantically valid
+        - semantic_score: A score from 0.0 to 1.0 representing semantic validity
+        - issues: A list of identified semantic issues
+        - suggestions: A list of suggestions to fix those issues
         """
         
-        # Use the AI agent for validation
-        result = await agent.run(
-            user_prompt=prompt,
-            result_type=SemanticValidationResult,
-        )
-        return result
+        logger.info(f"Sending prompt to PydanticAI agent for {validation_type} validation")
+        
+        # Use the AI agent for validation with timeout
+        import asyncio
+        
+        try:
+            # Apply timeout to prevent hanging
+            result = await asyncio.wait_for(
+                agent.run(
+                    user_prompt=prompt,
+                    result_type=SemanticValidationResult,
+                ),
+                timeout=20.0  # 20 second timeout
+            )
+            
+            logger.info("Successfully received response from PydanticAI agent")
+            
+            # Ensure the result is of the correct type
+            if not isinstance(result, SemanticValidationResult):
+                logger.warning(f"Agent returned unexpected type: {type(result)}")
+                return await basic_semantic_validation(
+                    validation_type, validation_level, data, schema, structural_errors
+                )
+                
+            return result
+            
+        except asyncio.TimeoutError:
+            logger.error("PydanticAI agent timed out after 20 seconds")
+            return SemanticValidationResult(
+                is_semantically_valid=False,
+                semantic_score=0.0,
+                issues=["Semantic validation timed out"],
+                suggestions=["Try again with a simpler validation request or check system load"]
+            )
+            
     except Exception as e:
         # Fallback in case of any errors with the agent
-        logger.error(f"Error during semantic validation: {e}")
+        logger.error(f"Error during semantic validation: {str(e)}", exc_info=True)
         return SemanticValidationResult(
             is_semantically_valid=False,
             semantic_score=0.0,
             issues=[f"Error during semantic validation: {str(e)}"],
-            suggestions=["Try a different validation level or check the API configuration."]
+            suggestions=["Try a different validation level or check the API configuration"]
         ) 

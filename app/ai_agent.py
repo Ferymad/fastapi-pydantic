@@ -96,42 +96,100 @@ def initialize_validation_agent():
             logger.error("OpenAI API key verification failed. Semantic validation will be disabled.")
             return
         
+        # Import necessary modules
+        import asyncio
+        import nest_asyncio
+        
+        # Apply nest_asyncio to allow running async code in sync context
         try:
-            # Import PydanticAI
-            from pydantic_ai import Agent
+            nest_asyncio.apply()
+        except RuntimeError as e:
+            logger.warning(f"Failed to apply nest_asyncio: {e}. Will try alternate approach if needed.")
+        
+        # Define a timeout wrapper for agent initialization
+        async def initialize_with_timeout(timeout=30.0):
+            try:
+                # Import PydanticAI
+                from pydantic_ai import Agent
+                
+                # Check PydanticAI version to determine initialization approach
+                pydantic_ai_version = importlib.metadata.version("pydantic-ai")
+                logger.info(f"Detected PydanticAI version: {pydantic_ai_version}")
+                
+                # First verify model name is available (important before agent initialization)
+                model_name = "gpt-4o-mini"  # Using gpt-4o-mini as requested
+                logger.info(f"Attempting to use model: {model_name}")
+                
+                # Version-specific initialization
+                agent = None
+                if tuple(map(int, pydantic_ai_version.split("."))) >= (0, 0, 30):
+                    # Newer versions (≥0.0.30)
+                    logger.info("Using newer PydanticAI initialization pattern")
+                    try:
+                        agent = Agent(
+                            model=f"openai:{model_name}",
+                            system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
+                            instrument=True
+                        )
+                        logger.info("PydanticAI Agent initialized successfully with newer pattern")
+                    except Exception as e:
+                        logger.error(f"Failed to initialize agent with newer pattern: {str(e)}")
+                        # Try with explicit api_key as fallback even for newer versions
+                        logger.info("Attempting fallback initialization with explicit API key")
+                        agent = Agent(
+                            model=f"openai:{model_name}",
+                            api_key=settings.OPENAI_API_KEY,
+                            system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
+                            instrument=True
+                        )
+                        logger.info("PydanticAI Agent initialized successfully with fallback pattern")
+                else:
+                    # Older versions (<0.0.30)
+                    logger.info("Using older PydanticAI initialization pattern")
+                    agent = Agent(
+                        model=f"openai:{model_name}",
+                        api_key=settings.OPENAI_API_KEY,
+                        system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
+                        instrument=True
+                    )
+                    logger.info("PydanticAI Agent initialized successfully with older pattern")
+                
+                return agent
+            except Exception as e:
+                logger.error(f"Error in agent initialization function: {str(e)}", exc_info=True)
+                return None
+        
+        # Run the initialization with timeout
+        try:
+            # Get or create event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             
-            # Check PydanticAI version to determine initialization approach
-            pydantic_ai_version = importlib.metadata.version("pydantic-ai")
-            logger.info(f"Detected PydanticAI version: {pydantic_ai_version}")
-            
-            # Version-specific initialization
-            if tuple(map(int, pydantic_ai_version.split("."))) >= (0, 0, 30):
-                # Newer versions (≥0.0.30)
-                logger.info("Using newer PydanticAI initialization pattern")
-                _validation_agent = Agent(
-                    model="openai:gpt-4o",
-                    system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
-                    instrument=True
+            # Run the initialization task with timeout
+            try:
+                logger.info("Starting agent initialization with timeout...")
+                _validation_agent = loop.run_until_complete(
+                    asyncio.wait_for(initialize_with_timeout(), timeout=30.0)
                 )
-            else:
-                # Older versions (<0.0.30)
-                logger.info("Using older PydanticAI initialization pattern")
-                _validation_agent = Agent(
-                    model="openai:gpt-4o",
-                    api_key=settings.OPENAI_API_KEY,
-                    system_prompt="You are a validation assistant specialized in evaluating AI outputs. Analyze data against schemas for structural and semantic validity.",
-                    instrument=True
-                )
-            
-            logger.info("PydanticAI Agent initialized successfully")
-            
-            # Verify agent is working with simple prompt
+            except asyncio.TimeoutError:
+                logger.error("Agent initialization timed out after 30 seconds")
+                _validation_agent = None
+        
+        except Exception as e:
+            logger.error(f"Failed to run agent initialization: {str(e)}", exc_info=True)
+            _validation_agent = None
+        
+        logger.info("PydanticAI Agent initialization completed")
+        
+        # Verify agent is working with simple prompt
+        if _validation_agent is None:
+            logger.error("Agent initialization appeared to succeed but returned None")
+        else:
             verify_agent_functionality()
             
-        except ImportError as e:
-            logger.error(f"pydantic_ai package not installed or has dependency issues: {e}")
-        except Exception as e:
-            logger.error(f"Failed to initialize validation agent: {str(e)}", exc_info=True)
     except Exception as e:
         logger.error(f"Error in agent initialization process: {str(e)}", exc_info=True)
 
@@ -179,21 +237,52 @@ def verify_agent_functionality():
     
     if not _validation_agent:
         logger.warning("Cannot verify agent functionality: agent is not initialized")
-        return
+        return False
         
     try:
-        # Simple prompt to test agent functionality
-        result = _validation_agent.run(
-            user_prompt="Respond with 'ok' if you can read this message.", 
-            result_type=str
-        )
+        logger.info("Starting agent functionality verification...")
         
-        if result and "ok" in result.lower():
-            logger.info("Agent functionality verified successfully")
+        # Prepare a simple test prompt
+        test_prompt = "Respond with 'ok' if you can read this message."
+        logger.info(f"Testing agent with prompt: '{test_prompt}'")
+        
+        # Try running the agent with a timeout to prevent hanging
+        import asyncio
+        
+        async def test_agent():
+            try:
+                result = await asyncio.wait_for(
+                    _validation_agent.arun(
+                        user_prompt=test_prompt, 
+                        result_type=str
+                    ),
+                    timeout=15.0  # 15 second timeout
+                )
+                return result
+            except asyncio.TimeoutError:
+                logger.error("Agent verification timed out after 15 seconds")
+                return None
+        
+        # Run the test
+        try:
+            # For synchronous context
+            import nest_asyncio
+            nest_asyncio.apply()  # This allows running async code in a synchronous context
+            result = asyncio.run(test_agent())
+        except RuntimeError:
+            # For asyncio context (if already in an event loop)
+            loop = asyncio.get_event_loop()
+            result = loop.run_until_complete(test_agent())
+        
+        if result and isinstance(result, str) and "ok" in result.lower():
+            logger.info("Agent functionality verified successfully with response: " + result[:50])
+            return True
         else:
             logger.warning(f"Agent functionality verification returned unexpected result: {result}")
+            return False
     except Exception as e:
-        logger.error(f"Agent functionality verification failed: {str(e)}")
+        logger.error(f"Agent functionality verification failed: {str(e)}", exc_info=True)
+        return False
 
 def get_validation_agent():
     """
