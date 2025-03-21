@@ -1,268 +1,112 @@
-# AI Output Validation Service
+# FastAPI-Pydantic Validation Service
 
-A lightweight validation service built with FastAPI and Pydantic v2 to validate AI-generated outputs with both standard structural validation and enhanced semantic validation.
+A robust validation service built with FastAPI and Pydantic v2 that provides advanced validation capabilities for API outputs including format validation.
 
 ## Features
 
-- Dynamic validation against provided schemas
-- Enhanced semantic validation with PydanticAI
-- Structured logging and monitoring with Logfire
-- Configurable validation levels
-- Optional API key authentication
-- Detailed validation reports with suggestions for improvement
-- Resilient agent initialization with proper error handling
+- **Schema-Based Validation**: Validate data against a specified schema with support for nested objects
+- **Format Validation**: Validate common formats including:
+  - Email validation
+  - Date format validation
+  - Phone number pattern validation
+  - **Advanced Name Validation**: Detect random character sequences, keyboard patterns, and other issues in name fields
+- **Semantic Validation**: Check data consistency and relationships
+- **Multiple Validation Levels**: Basic, standard, and strict validation options
+- **Detailed Error Messages**: Get comprehensive error information and helpful suggestions
 
-## Recent Improvements
+## Installation
 
-- ✅ Fixed PydanticAI agent initialization for reliable semantic validation
-- ✅ Added improved JSON error handling for better client feedback
-- ✅ Implemented lazy loading of validation agent for better resource usage
-- ✅ Enhanced error handling with proper fallbacks
-- ✅ Improved web interface with real-time status monitoring
-- ✅ Added format validation (email, date, phone numbers) with helpful suggestions
-- ✅ Implemented intelligent schema enrichment for common field patterns
-- ✅ Added new test endpoint for easier validation debugging
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/fastapi-pydantic.git
+cd fastapi-pydantic
 
-## Getting Started
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
 
-### Prerequisites
-
-- Python 3.8+
-- Docker (optional)
-- OpenAI API Key (for semantic validation)
-
-### Local Development
-
-1. Clone the repository
-2. Create a virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Set up environment variables (create a .env file):
-   ```
-   # Required for semantic validation
-   OPENAI_API_KEY=your_openai_api_key
-   
-   # Optional configuration
-   SERVICE_NAME=ai-output-validator
-   SERVICE_VERSION=0.1.0
-   ENV=development
-   AUTH_ENABLED=false
-   SECRET_KEY=your_secret_key
-   LOGFIRE_API_KEY=your_logfire_api_key
-   ```
-5. Run the application:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-6. Access the API documentation at http://localhost:8000/docs
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key for semantic validation | "" |
-| `SERVICE_NAME` | Name of the service | "ai-output-validator" |
-| `SERVICE_VERSION` | Version of the service | "0.1.0" |
-| `ENV` | Environment (development, staging, production) | "development" |
-| `AUTH_ENABLED` | Whether authentication is enabled | false |
-| `SECRET_KEY` | Secret key for API authentication | "dev_secret_key_change_in_production" |
-| `LOGFIRE_API_KEY` | Logfire API key for monitoring | "" |
-| `LOG_LEVEL` | Logging level | "INFO" |
-| `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS | "*" |
-
-### Docker Deployment
-
-1. Build the Docker image:
-   ```bash
-   docker build -t ai-output-validator .
-   ```
-2. Run the container:
-   ```bash
-   docker run -p 8000:8000 \
-     -e OPENAI_API_KEY=your_openai_api_key \
-     -e ENV=production \
-     -e AUTH_ENABLED=true \
-     -e SECRET_KEY=your_secret_key \
-     ai-output-validator
-   ```
-
-## API Endpoints
-
-| Endpoint | Method | Description | Authentication |
-|----------|--------|-------------|----------------|
-| `/validate` | POST | Validates AI output against provided schema with semantic checks | Optional API Key |
-| `/health` | GET | Health check endpoint | None |
-| `/diagnostic` | GET | Service diagnostic information | None |
-| `/` | GET | Interactive web interface | None |
-
-### Validation Request Format
-
-The validation endpoint accepts a JSON body with the following fields:
-
-```json
-{
-  "data": { 
-    "key1": "value1",
-    "key2": "value2"
-  },
-  "schema": {
-    "key1": {"type": "string", "required": true},
-    "key2": {"type": "string", "required": true}
-  },
-  "type": "generic",
-  "level": "standard"
-}
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-- `data`: The AI-generated output to validate
-- `schema`: Pydantic schema definition for validation
-- `type`: Type of validation to perform (generic, recommendation, summary, etc.)
-- `level`: Level of semantic validation (basic, standard, strict)
+## Usage
 
-#### Enhanced Schema Format
+Start the server:
 
-The service now supports rich schema definitions including:
-
-```json
-{
-  "email": {"type": "string", "required": true, "format": "email"},
-  "order_date": {"type": "string", "required": true, "format": "date"},
-  "phone_number": {"type": "string", "required": true, "pattern": "^\\d{10}$"},
-  "description": {"type": "string", "required": true, "min_length": 20, "max_length": 500},
-  "quantity": {"type": "integer", "required": true, "min": 1, "max": 100}
-}
+```bash
+uvicorn app.main:app --reload
 ```
 
-Supported schema attributes:
-- `format`: Validate common formats like email, date, etc.
-- `pattern`: Use regex patterns for custom validation rules
-- `min_length`/`max_length`: Enforce string or array length constraints
-- `min`/`max`: Set numerical value ranges
+### Validate Data
 
-### Validation Response Format
+Validate data against a schema:
 
-The validation endpoint returns a detailed JSON response:
-
-```json
-{
-  "is_valid": true,
-  "structural_validation": {
-    "is_structurally_valid": true,
-    "errors": [],
-    "suggestions": []
-  },
-  "semantic_validation": {
-    "is_semantically_valid": true,
-    "semantic_score": 0.95,
-    "issues": [],
-    "suggestions": []
-  }
-}
-```
-
-When validation errors occur, the response provides detailed feedback:
-
-```json
-{
-  "is_valid": false,
-  "structural_validation": {
-    "is_structurally_valid": false,
-    "errors": [
-      {
-        "loc": "email",
-        "type": "value_error.email",
-        "msg": "value is not a valid email address",
-        "suggestion": "email must be a valid email address format (e.g., user@example.com)"
-      }
-    ],
-    "suggestions": ["Fix the email format to proceed with semantic validation"]
-  },
-  "semantic_validation": null
-}
-```
-
-## Enhanced Validation with PydanticAI
-
-The service provides enhanced validation with semantic checks powered by PydanticAI. This goes beyond structural validation to evaluate the content quality, relevance, and coherence.
-
-### How Enhanced Validation Works
-
-1. First, standard structural validation is performed using the provided schema
-2. Then, semantic validation is performed using PydanticAI if the structural validation passes
-3. The results include both standard and semantic validation details, with suggestions for improvement
-
-### PydanticAI Implementation Notes
-
-The implementation follows best practices for integrating PydanticAI:
-
-- Lazy initialization of the agent for better resource utilization
-- Simplified agent initialization with minimal parameters
-- Robust error handling with fallback to basic validation when needed
-- Timeouts for agent operations to prevent blocking
-- Response validation and error correction
-
-### Example Request
-
-```python
-import requests
-
-# Your AI output data and schema
-validation_request = {
+```bash
+curl -X POST "http://localhost:8000/validate" \
+  -H "Content-Type: application/json" \
+  -d '{
     "data": {
-        "response_text": "This is a response from the AI",
-        "confidence_score": 0.92
+      "customer_name": "John Smith",
+      "email": "john@example.com",
+      "order_date": "2023-10-15",
+      "items": ["item1", "item2"],
+      "total_price": 29.99
     },
     "schema": {
-        "response_text": {"type": "string", "required": true},
-        "confidence_score": {"type": "number", "required": false}
+      "customer_name": {"type": "string", "required": true},
+      "email": {"type": "string", "format": "email", "required": true},
+      "order_date": {"type": "string", "format": "date", "required": true},
+      "items": {"type": "array", "items": {"type": "string"}, "required": true},
+      "total_price": {"type": "number", "required": true}
     },
-    "type": "generic",
-    "level": "standard"
-}
-
-# Send to enhanced validation service
-response = requests.post(
-    "http://your-service-url/validate",
-    headers={"x-api-key": "your-secret-key"},  # Only needed if AUTH_ENABLED=true
-    json=validation_request
-)
-
-# Check validation result
-result = response.json()
-if result["structural_validation"]["is_structurally_valid"]:
-    if result["semantic_validation"]["is_semantically_valid"]:
-        print("Both structural and semantic validation passed!")
-    else:
-        print("Structural validation passed, but semantic issues found:")
-        for issue in result["semantic_validation"]["issues"]:
-            print(f" - {issue}")
-else:
-    print("Structural validation failed:", result["structural_validation"]["errors"])
+    "validation_type": "order",
+    "validation_level": "standard"
+  }'
 ```
 
-### Validation Levels
+## Name Validation
 
-You can specify the validation level for semantic checks:
+The service includes advanced name validation to detect:
 
-- `basic`: Light validation focused on basic structure and content
-- `standard` (default): Balanced validation for most use cases
-- `strict`: Rigorous validation with comprehensive checks
+- Random character sequences (e.g., "asdfghjkl")
+- Keyboard patterns (e.g., "qwertyuiop")
+- Repeating characters (e.g., "aaaaaaaa")
+- Names that are too short
+- Names with invalid character distributions
 
-## Monitoring and Logging
+Name validation is automatically applied to fields with common name identifiers:
+- `name`
+- `customer_name`
+- `full_name`
+- `first_name`
+- `last_name`
+- `contact_name`
+- `person_name`
 
-The service includes structured logging and monitoring capabilities:
+If a field contains invalid name content, you'll receive descriptive error messages.
 
-- All requests and validation events are logged with detailed context
-- When configured with a Logfire API key, logs are sent to Logfire for analysis
-- Processing times are tracked and included in response headers
-- Standard Python logging is used as a fallback when Logfire is not configured
-- Web interface shows real-time status of the service
+## Documentation
+
+For more detailed documentation, visit:
+
+- API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Name Validation: [./docs/name_validation.md](./docs/name_validation.md)
+
+## Testing
+
+Run tests with pytest:
+
+```bash
+python -m pytest
+```
+
+Run name validation tests specifically:
+
+```bash
+python -m pytest tests/test_name_validation.py -v
+```
 
 ## License
 

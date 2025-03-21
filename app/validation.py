@@ -5,16 +5,93 @@ This module provides functions for both structural and semantic validation
 of AI outputs against predefined schemas.
 """
 
-from typing import Dict, Any, List, Tuple, Type, Optional, Annotated
+from typing import Dict, Any, List, Tuple, Type, Optional, Annotated, Callable
 import logging
 import re
 from datetime import datetime
 from pydantic import BaseModel, ValidationError, create_model, Field, EmailStr, field_validator, AfterValidator, BeforeValidator
+from pydantic_core import core_schema, PydanticCustomError
 
 from app.models import StructuralValidationResult, SemanticValidationResult
 from app.ai_agent import get_validation_agent
 
 logger = logging.getLogger(__name__)
+
+# Name validation functions
+def validate_name_content(value: str) -> str:
+    """
+    Validate that a string contains reasonable name content.
+    
+    Args:
+        value: The string to validate
+        
+    Returns:
+        The validated string
+        
+    Raises:
+        ValueError: If the string doesn't appear to be a valid name
+    """
+    if not value or len(value.strip()) < 2:
+        raise PydanticCustomError(
+            'name_too_short',
+            'Name is too short'
+        )
+    
+    # Check for valid characters (letters, spaces, hyphens, apostrophes)
+    if not re.match(r'^[a-zA-Z\s\-\'\u00C0-\u00FF]+$', value):
+        raise PydanticCustomError(
+            'invalid_name_characters',
+            'Name contains invalid characters'
+        )
+    
+    # Check for keyboard patterns
+    keyboard_patterns = [
+        r'qwerty', r'asdfgh', r'zxcvbn', r'yuiop', r'hjkl', r'nm',  # QWERTY keyboard
+        r'azerty', r'qsdfgh', r'wxcvbn'  # AZERTY keyboard
+    ]
+    
+    lower_value = value.lower()
+    for pattern in keyboard_patterns:
+        if pattern in lower_value:
+            raise PydanticCustomError(
+                'keyboard_pattern',
+                'Invalid name: appears to contain keyboard pattern'
+            )
+    
+    # Check for excessive repeating characters (e.g., 'aaaaaa')
+    if re.search(r'(.)\1{3,}', value):
+        raise PydanticCustomError(
+            'repeating_characters',
+            'Invalid name: contains excessive repeating characters'
+        )
+    
+    # Check for random sequences (many consonants in a row, etc.)
+    consonants = r'[bcdfghjklmnpqrstvwxyz]'
+    if re.search(f'{consonants}{{5,}}', lower_value, re.IGNORECASE):
+        raise PydanticCustomError(
+            'random_characters',
+            'Invalid name: appears to contain random characters or keyboard pattern'
+        )
+    
+    return value
+
+# Create a NameStr type using Annotated
+NameStr = Annotated[
+    str,
+    AfterValidator(validate_name_content)
+]
+
+def name_schema_customizer(field_name: str):
+    """Return a function that customizes the schema for name fields"""
+    def get_name_schema(tp, handler):
+        schema = handler(tp)
+        # Create a custom validator for name fields
+        return core_schema.with_info_after_validator_function(
+            validate_name_content,
+            schema,
+            serialization=core_schema.SerializationInfo(),
+        )
+    return get_name_schema
 
 def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
     """
@@ -51,6 +128,12 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
             
             # Map schema types to Python types
             if field_type == "string":
+                # Check if this is likely a name field
+                is_name_field = field_name.lower() in [
+                    "name", "customer_name", "full_name", "first_name", 
+                    "last_name", "contact_name", "person_name"
+                ]
+                
                 # Handle specific string formats
                 if format_type == "email":
                     base_type = EmailStr
@@ -73,28 +156,31 @@ def create_model_from_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
                         return validate_date
                     
                     validators[validator_name] = field_validator(field_name, mode='before')(create_date_validator(field_name))
+                elif is_name_field:
+                    # Use NameStr for name fields
+                    base_type = NameStr
                 else:
                     base_type = str
                     
-                    # Add string-specific validations
-                    if min_length is not None:
-                        field_args["min_length"] = min_length
-                    if max_length is not None:
-                        field_args["max_length"] = max_length
-                    if pattern is not None:
-                        # Create regex pattern validator
-                        validator_name = f"validate_{field_name}_pattern"
-                        
-                        def create_pattern_validator(field: str, pattern: str):
-                            def validate_pattern(v):
-                                if not v:
-                                    return v
-                                if not re.match(pattern, v):
-                                    raise ValueError(f"{field} must match pattern {pattern}")
+                # Add string-specific validations
+                if min_length is not None:
+                    field_args["min_length"] = min_length
+                if max_length is not None:
+                    field_args["max_length"] = max_length
+                if pattern is not None:
+                    # Create regex pattern validator
+                    validator_name = f"validate_{field_name}_pattern"
+                    
+                    def create_pattern_validator(field: str, pattern: str):
+                        def validate_pattern(v):
+                            if not v:
                                 return v
-                            return validate_pattern
-                        
-                        validators[validator_name] = field_validator(field_name, mode='before')(create_pattern_validator(field_name, pattern))
+                            if not re.match(pattern, v):
+                                raise ValueError(f"{field} must match pattern {pattern}")
+                            return v
+                        return validate_pattern
+                    
+                    validators[validator_name] = field_validator(field_name, mode='before')(create_pattern_validator(field_name, pattern))
                 
             elif field_type == "number":
                 base_type = float
@@ -258,9 +344,6 @@ async def basic_semantic_validation(
             suggestions.append(f"Add the required field '{field}'")
     
     # Check for format issues based on field names
-    import re
-    from datetime import datetime
-    
     for field_name, value in data.items():
         field_def = schema.get(field_name, {})
         
@@ -294,6 +377,16 @@ async def basic_semantic_validation(
             if not re.match(r'^\d{7,15}$', re.sub(r'[^0-9]', '', value)):
                 issues.append(f"Field '{field_name}' does not appear to be a valid phone number")
                 suggestions.append(f"Provide a valid phone number for '{field_name}'")
+                
+        # Name validation for fields that typically contain names
+        if (field_name in ["name", "customer_name", "full_name", "first_name", "last_name", "contact_name", "person_name"] and 
+            isinstance(value, str)):
+            try:
+                # Apply the same validation as our structural validator
+                validate_name_content(value)
+            except PydanticCustomError as e:
+                issues.append(f"Field '{field_name}': {e.message}")
+                suggestions.append(f"Provide a valid name for '{field_name}'")
     
     # Content quality checks based on validation type
     if validation_type == "recommendation":
